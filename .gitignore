@@ -1,0 +1,20 @@
+# Python
+server/.venv/
+**/__pycache__/
+*.pyc
+
+# Secrets
+server/.env
+
+# Node
+client/node_modules/
+client/dist/
+
+# Editor / OS
+.vs/
+.DS_Store
+client/.env
+
+# Claude local
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
