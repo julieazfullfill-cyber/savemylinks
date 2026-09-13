@@ -694,7 +694,9 @@ dependencies = [
     { name = "alembic" },
     { name = "apscheduler" },
     { name = "asyncpg" },
+    { name = "fastapi" },
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
@@ -702,16 +704,12 @@ dependencies = [
     { name = "structlog" },
     { name = "tenacity" },
     { name = "typer" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
 browser = [
     { name = "playwright" },
-]
-web = [
-    { name = "fastapi" },
-    { name = "jinja2" },
-    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.dev-dependencies]
@@ -727,9 +725,9 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
     { name = "apscheduler", specifier = ">=3.11" },
     { name = "asyncpg", specifier = ">=0.30" },
-    { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.115" },
+    { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "jinja2", marker = "extra == 'web'", specifier = ">=3.1" },
+    { name = "jinja2", specifier = ">=3.1" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.49" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.6" },
@@ -738,9 +736,9 @@ requires-dist = [
     { name = "structlog", specifier = ">=24.4" },
     { name = "tenacity", specifier = ">=9.0" },
     { name = "typer", specifier = ">=0.15" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'web'", specifier = ">=0.32" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
-provides-extras = ["web", "browser"]
+provides-extras = ["browser"]
 
 [package.metadata.requires-dev]
 dev = [

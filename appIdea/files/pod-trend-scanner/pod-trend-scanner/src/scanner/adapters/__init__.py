@@ -6,9 +6,13 @@ Không sửa code core.
 
 from scanner.adapters.amazon_suggest import AmazonSuggestAdapter
 from scanner.adapters.base import Observation, RawItem, SourceAdapter
+from scanner.adapters.bing_suggest import BingSuggestAdapter
+from scanner.adapters.google_suggest import GoogleSuggestAdapter
 
 REGISTRY: dict[str, type[SourceAdapter]] = {
     AmazonSuggestAdapter.name: AmazonSuggestAdapter,
+    GoogleSuggestAdapter.name: GoogleSuggestAdapter,
+    BingSuggestAdapter.name: BingSuggestAdapter,
 }
 
 
@@ -22,6 +26,8 @@ def get_adapter_class(name: str) -> type[SourceAdapter]:
 __all__ = [
     "REGISTRY",
     "AmazonSuggestAdapter",
+    "BingSuggestAdapter",
+    "GoogleSuggestAdapter",
     "Observation",
     "RawItem",
     "SourceAdapter",

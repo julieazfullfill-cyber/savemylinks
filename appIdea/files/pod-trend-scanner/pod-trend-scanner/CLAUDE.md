@@ -69,6 +69,7 @@ src/scanner/
   web/
     app.py
     templates/
+  scheduler.py       # APScheduler: collect 02:00 UTC, metrics 03:00 UTC
   cli.py             # typer: scanner collect / metrics / risk / brief
 tests/
 migrations/

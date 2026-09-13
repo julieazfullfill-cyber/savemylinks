@@ -32,14 +32,14 @@ Mục tiêu: một nguồn duy nhất chạy được end-to-end. Chưa cần đ
 
 Mục tiêu: có velocity thật. Đây là phase quan trọng nhất, đừng rút gọn.
 
-- [ ] `adapters/google_suggest.py`
-- [ ] `adapters/bing_suggest.py`
+- [x] `adapters/google_suggest.py`
+- [x] `adapters/bing_suggest.py`
 - [ ] `adapters/pinterest_suggest.py`
 - [ ] `adapters/pinterest_trends.py` — Playwright, và **backfill 52 tuần lịch sử**
-- [ ] `core/ratelimit.py` — token bucket theo từng source
-- [ ] `pipeline/metrics.py` — velocity_7d, accel, n_sources, ghi `term_metrics_daily`
-- [ ] APScheduler: collect 02:00, metrics 03:00
-- [ ] Trang HTML thô liệt kê top term theo accel
+- [x] `core/ratelimit.py` — token bucket theo từng source
+- [x] `pipeline/metrics.py` — velocity_7d, accel, n_sources, ghi `term_metrics_daily`
+- [x] APScheduler: collect 02:00, metrics 03:00
+- [x] Trang HTML thô liệt kê top term theo accel
 
 **Acceptance**
 - Backfill Pinterest xong thì `term_metrics_daily` có dữ liệu lùi ≥ 26 tuần

@@ -36,6 +36,18 @@ def amazon_payload() -> dict[str, Any]:
     return payload
 
 
+@pytest.fixture
+def google_payload() -> list[Any]:
+    payload: list[Any] = load_fixture("google_suggest.json")
+    return payload
+
+
+@pytest.fixture
+def bing_payload() -> list[Any]:
+    payload: list[Any] = load_fixture("bing_suggest.json")
+    return payload
+
+
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     """Session Postgres thật. Bỏ qua test nếu không có DB hoặc chưa migrate."""

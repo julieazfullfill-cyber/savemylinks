@@ -1,8 +1,26 @@
 import asyncio
+import bisect
 
 import pytest
 
 from scanner.core.ratelimit import RateLimitConfig, RateLimiter
+
+
+class VirtualClock:
+    """Đồng hồ ảo: acquire() được test đẩy thời gian thay vì chờ thật.
+
+    Cho phép mô phỏng cửa sổ dài (ví dụ 100 request Pinterest trong 1 phút) tức thời
+    thay vì tốn hàng chục giây chờ thật.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def time(self) -> float:
+        return self.now
+
+    async def sleep(self, seconds: float) -> None:
+        self.now += seconds
 
 
 def test_config_from_sources_config() -> None:
@@ -40,3 +58,39 @@ async def test_burst_is_capped() -> None:
     await asyncio.gather(*(limiter.acquire() for _ in range(20)))
     elapsed = loop.time() - start
     assert elapsed >= (20 - 5) / 10 * 0.9
+
+
+async def test_pinterest_config_never_exceeds_cap_in_any_60s_window() -> None:
+    """Mô phỏng 100 request Pinterest trong ~1 phút bằng đồng hồ ảo.
+
+    Cấu hình lấy đúng từ docs/SOURCES.md: trần thực tế ~57 req/cửa sổ trượt, token
+    bucket đặt an toàn ở 45 req/60s, burst 5.
+    """
+    clock = VirtualClock()
+    limiter = RateLimiter(
+        RateLimitConfig(requests=45, per_seconds=60.0, burst=5),
+        name="pinterest_trends",
+        now_fn=clock.time,
+        sleep_fn=clock.sleep,
+    )
+
+    granted_at: list[float] = []
+    for _ in range(100):
+        granted_at.append(await limiter.acquire())
+
+    assert granted_at == sorted(granted_at)
+
+    # Cận đúng của token bucket cho một cửa sổ trượt độ dài T là burst + rate*T, không
+    # phải chỉ "requests" — burst cho phép dồn 5 request liền nhau ở đầu cửa sổ, sau
+    # đó chảy đều theo rate. Với burst=5, requests=45/60s: cận = 5 + 45 = 50 trong bất
+    # kỳ cửa sổ 60s nào. Đây vẫn an toàn so với trần thực tế ~57 req của Pinterest.
+    window = 60.0
+    bound = 45 + 5
+    assert bound <= 57, "cấu hình đã chọn phải còn margin so với trần thực tế 57"
+    for i, t in enumerate(granted_at):
+        lo = bisect.bisect_left(granted_at, t - window)
+        in_window = i - lo + 1
+        assert in_window <= bound, f"vượt trần tại request {i}: {in_window} request trong 60s"
+
+    # 100 request ở 45/60s (burst 5) tối thiểu mất (100-5)/45*60 giây thật (mô phỏng).
+    assert clock.now >= (100 - 5) / 45 * 60 * 0.99

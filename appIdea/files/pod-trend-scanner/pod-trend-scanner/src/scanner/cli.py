@@ -1,8 +1,9 @@
-"""CLI: scanner seed / collect / sources."""
+"""CLI: scanner seed / collect / metrics / sources."""
 
 import asyncio
 import json
 import sys
+from datetime import date as date_t
 from pathlib import Path
 from typing import Annotated
 
@@ -14,6 +15,7 @@ from scanner.core.db import dispose_engine, session_scope
 from scanner.core.log import configure_logging, get_logger
 from scanner.core.seeds import CORE_NICHES, parse_seed_file, sync_seeds
 from scanner.pipeline.collect import collect_source
+from scanner.pipeline.metrics import recompute_history, run_metrics
 
 # Console Windows mặc định là cp1252, help và log tiếng Việt sẽ vỡ nếu không ép UTF-8.
 for _stream in (sys.stdout, sys.stderr):
@@ -88,6 +90,43 @@ def collect(
             await dispose_engine()
 
     typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command()
+def metrics(
+    for_date: Annotated[
+        str | None, typer.Option("--date", help="YYYY-MM-DD, mặc định hôm nay (UTC)")
+    ] = None,
+    recompute: Annotated[
+        bool,
+        typer.Option("--recompute", help="tính lại toàn bộ lịch sử từ term_observations"),
+    ] = False,
+) -> None:
+    """Tính value_norm/velocity/accel, ghi term_metrics_daily."""
+    _setup()
+    target = date_t.fromisoformat(for_date) if for_date else None
+
+    async def run() -> dict[str, int | str] | list[dict[str, int | str]]:
+        try:
+            async with session_scope() as session:
+                if recompute:
+                    results = await recompute_history(session)
+                    return [r.as_dict() for r in results]
+                stats = await run_metrics(session, target)
+                return stats.as_dict()
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command()
+def schedule() -> None:
+    """Chạy job nền: collect 02:00 UTC + metrics 03:00 UTC. Ctrl+C để dừng."""
+    _setup()
+    from scanner.scheduler import run_forever  # import trễ, module này kéo theo apscheduler
+
+    asyncio.run(run_forever())
 
 
 @app.command("sources")
