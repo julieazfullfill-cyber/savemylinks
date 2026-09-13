@@ -1,0 +1,239 @@
+{
+  "version": "1.0",
+  "generated_for": "POD trend scanner - seed keyword list",
+  "risk_tiers": {
+    "T0": "Generic + personalized. Auto-approve after blocklist. No TM lookup needed unless a proper noun appears.",
+    "T1": "Occupation / hobby humor. Auto-approve after blocklist + USPTO exact-phrase check on the final quote.",
+    "T2": "Pop culture adjacent. Requires origin classification + USPTO + human review. Never auto-publish.",
+    "T3": "Political / current event / celebrity / lyric / franchise. Human review mandatory, separate storefront, short shelf life."
+  },
+  "field_notes": {
+    "peak_months": "1-12. Production must start 8-12 weeks BEFORE peak. Empty array = evergreen.",
+    "personalized": "true = product requires a customer-supplied variable (name, photo, date). These convert higher and are much harder for competitors to copy.",
+    "intent": "gift = bought for someone else (higher AOV, less price-sensitive). self = bought for oneself."
+  },
+
+  "core_niches": {
+
+    "wedding": [
+      {"seed": "bridesmaid proposal box", "sub": "bridal_party", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [1,2,3,4]},
+      {"seed": "will you be my bridesmaid", "sub": "bridal_party", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [1,2,3,4]},
+      {"seed": "maid of honor proposal gift", "sub": "bridal_party", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [1,2,3,4]},
+      {"seed": "groomsman proposal gift", "sub": "bridal_party", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [1,2,3,4]},
+      {"seed": "bachelorette party shirts", "sub": "bridal_party", "risk": "T1", "personalized": true, "intent": "self", "peak_months": [4,5,6,7]},
+      {"seed": "bridesmaid robes personalized", "sub": "bridal_party", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [3,4,5,6]},
+      {"seed": "bridesmaid tote bag custom", "sub": "bridal_party", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [3,4,5,6]},
+      {"seed": "bridal party tumblers", "sub": "bridal_party", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [3,4,5,6]},
+      {"seed": "bride hoodie custom", "sub": "bridal_wear", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [3,4,5,6]},
+      {"seed": "wife of the party shirt", "sub": "bridal_wear", "risk": "T1", "personalized": false, "intent": "self", "peak_months": [4,5,6,7]},
+      {"seed": "future mrs sweatshirt", "sub": "engagement", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12,1,2]},
+      {"seed": "just engaged shirt", "sub": "engagement", "risk": "T0", "personalized": false, "intent": "self", "peak_months": [11,12,1,2]},
+      {"seed": "engagement gift for couple", "sub": "engagement", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12,1,2]},
+      {"seed": "engagement ring dish custom", "sub": "engagement", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12,1,2]},
+      {"seed": "custom wedding venue illustration", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [9,10,11,12]},
+      {"seed": "wedding venue line drawing", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [9,10,11,12]},
+      {"seed": "custom wedding portrait from photo", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [9,10,11,12]},
+      {"seed": "custom couple portrait illustration", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom pet wedding portrait", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "wedding photo blanket", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom map wedding location", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom vow book set", "sub": "ceremony", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [2,3,4,5]},
+      {"seed": "wedding welcome sign custom", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [2,3,4,5]},
+      {"seed": "wedding seating chart custom", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [2,3,4,5]},
+      {"seed": "wedding table numbers custom", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [2,3,4,5]},
+      {"seed": "mr and mrs sign", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [2,3,4,5]},
+      {"seed": "custom neon sign wedding", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [2,3,4,5]},
+      {"seed": "wedding hashtag sign custom", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [2,3,4,5]},
+      {"seed": "just married banner", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [4,5,6,7]},
+      {"seed": "wedding guest book alternative", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [2,3,4,5]},
+      {"seed": "save the date magnet custom", "sub": "stationery", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [10,11,12,1]},
+      {"seed": "wedding thank you card custom", "sub": "stationery", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [6,7,8,9]},
+      {"seed": "elopement announcement card", "sub": "stationery", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "personalized wedding hanger", "sub": "bridal_wear", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [3,4,5,6]},
+      {"seed": "personalized cutting board wedding", "sub": "gift", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [5,6,7,8]},
+      {"seed": "custom champagne flutes wedding", "sub": "gift", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [4,5,6,7]},
+      {"seed": "wedding koozie personalized", "sub": "favors", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [4,5,6,7]},
+      {"seed": "wedding favors custom bulk", "sub": "favors", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [3,4,5,6]},
+      {"seed": "mother of the bride gift", "sub": "family_gift", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [4,5,6,7]},
+      {"seed": "father of the bride gift", "sub": "family_gift", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [4,5,6,7]},
+      {"seed": "wedding gift for parents", "sub": "family_gift", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [4,5,6,7]},
+      {"seed": "groom gift from bride", "sub": "family_gift", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [4,5,6,7]},
+      {"seed": "wedding anniversary gift personalized", "sub": "anniversary", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "first anniversary paper gift", "sub": "anniversary", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "25th anniversary gift for parents", "sub": "anniversary", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "50th anniversary gift", "sub": "anniversary", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "honeymoon shirts couple", "sub": "post_wedding", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [5,6,7,8]},
+      {"seed": "wedding countdown sign", "sub": "engagement", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [1,2,3]},
+      {"seed": "micro wedding decor", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": [3,4,5]},
+      {"seed": "wedding ring dish custom", "sub": "gift", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []}
+    ],
+
+    "birthday": [
+      {"seed": "30th birthday shirt", "sub": "milestone", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "40th birthday gift for her", "sub": "milestone", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "50th birthday shirt funny", "sub": "milestone", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "60th birthday gift for him", "sub": "milestone", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "21st birthday sash", "sub": "milestone", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "sweet 16 shirt custom", "sub": "milestone", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "quinceanera shirt custom", "sub": "milestone", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "golden birthday shirt", "sub": "milestone", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "leap year birthday gift", "sub": "milestone", "risk": "T1", "personalized": false, "intent": "gift", "peak_months": [2]},
+      {"seed": "born in 1996 shirt", "sub": "birth_year", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": [], "note": "Rotate birth year annually. Milestone = current_year - 30 / 40 / 50."},
+      {"seed": "vintage 1976 birthday shirt", "sub": "birth_year", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": [], "note": "Rotate annually."},
+      {"seed": "1st birthday outfit", "sub": "kids", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "wild one birthday shirt", "sub": "kids", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "two cute birthday shirt", "sub": "kids", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "dinosaur birthday shirt custom", "sub": "kids_theme", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "mermaid birthday party shirt", "sub": "kids_theme", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "space birthday party decor", "sub": "kids_theme", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "construction birthday shirt", "sub": "kids_theme", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday girl shirt custom", "sub": "kids", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday boy shirt custom", "sub": "kids", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday shirt for twins", "sub": "kids", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "family birthday squad shirts", "sub": "group", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "birthday queen shirt", "sub": "adult", "risk": "T1", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "funny birthday shirt for men", "sub": "adult_humor", "risk": "T1", "personalized": false, "intent": "gift", "peak_months": []},
+      {"seed": "age reveal shirt funny", "sub": "adult_humor", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom birthday banner", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "birthday cake topper custom", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "birthday photo backdrop custom", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "surprise party decorations custom", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "birthday party favors custom", "sub": "favors", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "birthday photo collage gift", "sub": "photo", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "milestone birthday photo book", "sub": "photo", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday tumbler personalized", "sub": "drinkware", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday mug personalized", "sub": "drinkware", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday keychain personalized", "sub": "accessory", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "zodiac birthday gift", "sub": "theme", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [], "note": "12 deterministic sub-campaigns, one per sign, launch 6 weeks before each window."},
+      {"seed": "birth flower birthday gift", "sub": "theme", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthstone gift personalized", "sub": "theme", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday gift for best friend", "sub": "recipient", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday gift for mom", "sub": "recipient", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday gift for dad", "sub": "recipient", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday gift for grandma", "sub": "recipient", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday gift for sister", "sub": "recipient", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday gift for coworker", "sub": "recipient", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "teacher birthday gift personalized", "sub": "recipient", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "dog birthday bandana custom", "sub": "pet", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "cat birthday hat custom", "sub": "pet", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "half birthday shirt", "sub": "niche_occasion", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birthday card funny personalized", "sub": "stationery", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "adult birthday party theme decor", "sub": "decor", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []}
+    ],
+
+    "custom_photo": [
+      {"seed": "photo collage blanket", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom photo canvas", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom photo pillow", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "photo puzzle custom", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom photo mug", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom photo tumbler", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "photo keychain personalized", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom photo phone case", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "photo night light custom", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "photo coasters personalized", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom photo magnet", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "photo wallet card engraved", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [5,6]},
+      {"seed": "photo garden flag personalized", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "photo christmas ornament custom", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom face socks", "sub": "novelty", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12]},
+      {"seed": "custom photo apron", "sub": "novelty", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12]},
+      {"seed": "custom pet portrait", "sub": "pet", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom pet line art", "sub": "pet", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "pet face shirt custom", "sub": "pet", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "pet memorial gift personalized", "sub": "pet", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom pet bandana name", "sub": "pet", "risk": "T0", "personalized": true, "intent": "self", "peak_months": []},
+      {"seed": "dog dad shirt custom name", "sub": "pet", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": [6]},
+      {"seed": "cat mom shirt personalized", "sub": "pet", "risk": "T1", "personalized": true, "intent": "gift", "peak_months": [5]},
+      {"seed": "custom family portrait illustration", "sub": "family", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "family name sign custom", "sub": "family", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "grandma shirt with grandkids names", "sub": "family", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [4,5]},
+      {"seed": "mom shirt with kids names", "sub": "family", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [4,5]},
+      {"seed": "dad shirt with kids names", "sub": "family", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [5,6]},
+      {"seed": "personalized doormat family name", "sub": "home", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "house portrait custom from photo", "sub": "home", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "new home gift personalized", "sub": "home", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [5,6,7,8]},
+      {"seed": "custom family recipe towel handwriting", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12]},
+      {"seed": "handwriting jewelry custom", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom kids drawing on shirt", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [5,6,12]},
+      {"seed": "children artwork keepsake gift", "sub": "keepsake", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [5,6,12]},
+      {"seed": "custom star map night sky", "sub": "data_art", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom coordinates print", "sub": "data_art", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom soundwave art print", "sub": "data_art", "risk": "T2", "personalized": true, "intent": "gift", "peak_months": [], "note": "T2 because customers often submit copyrighted audio. Do not display song titles in listing images."},
+      {"seed": "baby milestone blanket custom", "sub": "baby", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "birth stat sign custom", "sub": "baby", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "custom name puzzle wooden", "sub": "baby", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12]},
+      {"seed": "personalized backpack kids name", "sub": "kids", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [7,8]},
+      {"seed": "memorial gift loss of loved one", "sub": "memorial", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "sympathy gift personalized photo", "sub": "memorial", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": []},
+      {"seed": "couple photo gift anniversary", "sub": "couple", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [2]},
+      {"seed": "long distance relationship gift custom", "sub": "couple", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [2]},
+      {"seed": "custom portrait from photo cartoon style", "sub": "illustration", "risk": "T2", "personalized": true, "intent": "gift", "peak_months": [], "note": "T2: 'cartoon style' requests frequently name a copyrighted animation studio. Style names must be blocked in the personalization field."},
+      {"seed": "custom photo book gift", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12]},
+      {"seed": "photo ornament personalized first christmas", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [10,11,12]},
+      {"seed": "custom photo jigsaw for grandparents", "sub": "photo_product", "risk": "T0", "personalized": true, "intent": "gift", "peak_months": [11,12]}
+    ]
+  },
+
+  "expansion_niches": {
+    "_note": "Do NOT run these on the same storefront or brand as the core niches. A takedown or account strike here should not be able to touch the wedding/photo business. Separate store, separate brand, separate payment account.",
+
+    "occupation_humor": {
+      "_risk": "T1",
+      "_pattern": "The seed is the AUDIENCE, not the phrase. The scanner finds what that audience is currently saying; the LLM writes the phrase.",
+      "seeds": [
+        "nurse humor shirt", "teacher funny shirt", "trucker funny shirt", "welder shirt funny",
+        "electrician humor", "plumber funny shirt", "hvac tech shirt", "mechanic funny shirt",
+        "chef kitchen humor shirt", "barista funny shirt", "accountant humor shirt",
+        "it support funny shirt", "dental hygienist shirt", "social worker shirt funny",
+        "real estate agent funny shirt", "firefighter wife shirt", "postal worker shirt funny"
+      ]
+    },
+
+    "hobby_humor": {
+      "_risk": "T1",
+      "seeds": [
+        "fishing funny shirt", "gardening humor shirt", "pickleball funny shirt",
+        "gym humor shirt", "camping funny shirt", "golf funny shirt", "hunting funny shirt",
+        "crochet funny shirt", "book lover shirt funny", "coffee addict shirt",
+        "plant lady shirt", "gamer funny shirt", "runner funny shirt", "birdwatching shirt funny"
+      ]
+    },
+
+    "general_humor": {
+      "_risk": "T1",
+      "seeds": [
+        "sarcastic shirt sayings", "introvert shirt funny", "antisocial shirt",
+        "monday humor shirt", "adulting is hard shirt", "dad joke shirt",
+        "girl dad shirt", "boy mom shirt", "step dad shirt funny", "grumpy old man shirt"
+      ]
+    },
+
+    "pop_culture": {
+      "_risk": "T2",
+      "_rule": "Never seed a franchise, character, or title. Seed the FORMAT of the joke instead, so the LLM produces an original phrase in a currently-popular shape rather than a reference you cannot own. Every output goes through origin classification + USPTO + human review.",
+      "seeds": [
+        "trending saying shirt", "viral phrase shirt", "internet humor shirt",
+        "y2k aesthetic shirt", "retro groovy shirt", "coquette aesthetic shirt",
+        "cottagecore shirt", "weirdcore shirt", "nostalgia 90s shirt", "nostalgia 2000s shirt"
+      ]
+    },
+
+    "political_civic": {
+      "_risk": "T3",
+      "_rule": "Highest suspension and takedown risk of anything on this list. Campaign slogans and rally phrases are routinely registered as trademarks by campaigns and PACs, marketplace content policies restrict political merchandise, and the commercial shelf life of a specific slogan is roughly 8-12 weeks. The seeds below are deliberately evergreen and non-partisan: civic, patriotic, and service themes that sell year-round and do not depend on any candidate, party, or election outcome. If you decide to sell partisan or event-driven designs, treat that as a separate business with its own entity and accept that the store may be shut down without warning.",
+      "seeds": [
+        "patriotic shirt 4th of july", "veteran shirt", "military family shirt",
+        "first responder shirt", "vote shirt generic", "freedom shirt vintage",
+        "americana vintage shirt", "flag distressed shirt"
+      ],
+      "hard_blocks": [
+        "any candidate or officeholder name",
+        "any party name or logo",
+        "any campaign slogan, past or present",
+        "any registered PAC or movement name",
+        "any depiction of a real identifiable person"
+      ]
+    }
+  }
+}
