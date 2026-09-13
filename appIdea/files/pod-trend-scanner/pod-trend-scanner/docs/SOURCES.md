@@ -69,44 +69,73 @@ cấu trúc response.
 
 ### pinterest_trends — nguồn quan trọng nhất
 
-- `https://trends.pinterest.com`, cần Playwright
-- Hai chế độ: trending theo quốc gia, và keyword research từ seed
-- Trả về search volume, seasonality, momentum tuần/tháng/năm, và **52 tuần lịch sử**
-- Rate limit thực tế: khoảng **57 request mỗi cửa sổ trượt, tính theo IP**. Token bucket
-  phải tôn trọng con số này, đặt an toàn ở 45.
-- **Backfill bắt buộc ở Phase 1:** 52 tuần lịch sử của Pinterest giải quyết trọn bài toán
-  cold start. Không có nó thì phải chờ 3 tuần mới tính được velocity.
+- **Endpoint thật, public, KHÔNG cần đăng nhập, KHÔNG cần Playwright lúc chạy production**
+  (Playwright chỉ dùng để dò ra endpoint — xem "Quá trình dò tìm" bên dưới):
+
+  ```
+  GET https://trends.pinterest.com/metrics/
+      ?terms=<seed>            (nhiều seed: nối dấu phẩy, url-encode)
+      &country=US
+      &end_date=<YYYY-MM-DD>   (PHẢI là một Thứ Sáu — xem "end_date" bên dưới)
+      &days=365
+      &aggregation=2
+      &normalize_against_group=false
+      &predicted_days=0
+  ```
+
+  Response: JSON array, một phần tử mỗi term **có đủ dữ liệu** (term ít volume bị bỏ
+  lặng lẽ khỏi response — không phải lỗi, đã xác nhận: gửi 20 seed thật chỉ 11 seed có
+  mặt trong response). Mỗi phần tử: `term`, `growth_rates` (wow/mom/yoy % thay đổi),
+  `counts[]` — chuỗi TUẦN `{date, count, normalizedCount,
+  predictedUpperBoundNormalizedCount, predictedLowerBoundNormalizedCount}`.
+
+- **Đã xác nhận thật: 53 tuần lịch sử** (2025-09-05 → 2026-09-04, `predicted_days=0`
+  loại hết điểm dự đoán) — vượt yêu cầu 52 tuần. Chạy thật qua toàn bộ pipeline
+  (`scanner collect --source pinterest_trends` → `scanner metrics --recompute`) ra đúng
+  53 ngày trong `term_metrics_daily`, velocity/accel tính đúng trên dữ liệu thật.
+
+- **`end_date` phải là Thứ Sáu đã "publish" xong** — Pinterest tổng hợp theo tuần
+  (mốc Thứ Sáu) và có độ trễ publish không cố định. Xác nhận trực tiếp: gọi với
+  `end_date` là hôm nay hoặc Thứ Sáu gần nhất (2 ngày trước) đều trả `400`, Thứ Sáu
+  tuần trước đó (9 ngày trước) trả `200`. Adapter tự lùi dần từng tuần khi gặp `400`
+  (tối đa 4 tuần), không hardcode số ngày trễ.
+
+- Hai chế độ mô tả trong bản gốc tài liệu này ("trending theo quốc gia" và "keyword
+  research từ seed") — endpoint `/metrics/` ở trên chính là chế độ thứ hai, và đã đủ
+  cho toàn bộ nhu cầu của hệ thống (search volume + momentum theo từng seed cụ thể).
+  Route `/search/` (UI đẹp hơn, có thể có thêm tính năng) yêu cầu đăng nhập — chưa cần
+  khám phá thêm vì `/metrics/` đã đáp ứng đủ acceptance.
+
+- Rate limit thực tế: khoảng **57 request mỗi cửa sổ trượt, tính theo IP** (áp dụng
+  chung cho domain trends.pinterest.com, không riêng endpoint này). Token bucket đặt an
+  toàn ở 45 req/60s, burst 5 — verify bằng đồng hồ ảo, xem `tests/test_ratelimit.py`.
+
 - Lý do đây là nguồn số một cho ba niche core: người dùng Pinterest lên kế hoạch cho việc
   chưa xảy ra — đám cưới, tiệc sinh nhật, sửa nhà — nên dữ liệu đi trước lúc mua hàng
   3-6 tháng. Đúng bằng lead time sản xuất của POD.
-- **Thăm dò 2026-09-13 (Chrome DevTools automation, session đã đăng nhập):**
-  - UI của trends.pinterest.com không render trong môi trường automation này (React
-    Suspense streaming bị kẹt ở `<template id="B:0">`, không phải do tài khoản —
-    chưa rõ nguyên nhân, có thể do thiếu tính năng trình duyệt cần cho chart).
-    KHÔNG tương tác được với ô tìm keyword qua UI nên chưa xác nhận được chế độ
-    "keyword research từ seed".
-  - Dù UI không render, tầng dữ liệu vẫn gọi được: nhiều request tới
-    `https://trends.pinterest.com/resource/ApiResource/get/` bọc các endpoint nội bộ
-    `/ads/v4/trends/topics/featured/<country>/...`,
-    `/ads/v4/trends/moment/available/<country>`,
-    `/ads/v4/trends/shopping/product_categories`,
-    `/ads/v4/trends/shopping/product_categories/top/<country>` (tham số
-    `ranking_method=GROWTH`, `order_by=PCT_CHANGE_MOM` — đúng tín hiệu "đang tăng"),
-    `/ads/v4/trends/shopping/product_categories/metrics/<country>` (tham số `days`,
-    `predicted_days` — có vẻ là time-series, khớp mô tả "momentum tuần/tháng/năm").
-    Tất cả trả `200` thật trên phiên đã đăng nhập.
-  - **Chưa lấy được response body** của các endpoint trên: mọi lần thử trả nội dung ra
-    ngoài phiên browser bị chặn bởi safety filter (nội dung có dạng cookie/query-string
-    hoặc base64), và gọi lại thủ công cùng URL/tham số từ trong trang (không qua
-    interceptor kịp trước khi navigate) trả `403` — cùng cơ chế CSRF như
-    `pinterest_suggest`.
-  - Đây là dữ liệu theo **product_category** (danh mục sản phẩm), chưa rõ có tương ứng
-    1-1 với "keyword research từ seed" như mô tả trên hay là một chế độ khác — cần xác
-    nhận thêm khi UI render được.
-  - **Kết luận:** `pinterest_trends.py` cần Playwright thật (không chỉ để bắt request —
-    để UI thật sự render và tương tác được, khác với pinterest_suggest chỉ cần
-    cookie+CSRF cho một GET đơn giản). Việc dựng Playwright + xử lý màn hình trắng này
-    là công việc riêng, chưa làm trong phiên này.
+
+#### Quá trình dò tìm (2026-09-13)
+
+Ban đầu thử qua Chrome DevTools automation (`claude-in-chrome`) — UI trends.pinterest.com
+không render trong môi trường đó (React Suspense kẹt), nên chuyển sang Playwright thật
+(`playwright.chromium`, cài qua `uv sync --extra browser`). Phát hiện theo thứ tự:
+
+1. Playwright thật render đúng, kể cả headless — vấn đề trước đó là do dùng
+   `wait_until="networkidle"` (trang giữ kết nối nền liên tục, không bao giờ "idle"),
+   đổi sang `wait_until="load"` + chờ cố định là đủ.
+2. Trang tự gọi nhiều endpoint nội bộ dạng `resource/ApiResource/get/` bọc
+   `/ads/v4/trends/...` (topics/featured, product_categories, …) — đây là dữ liệu theo
+   category, có CSRF chặn nếu tự construct request, và chỉ có ~13 tuần lịch sử.
+3. Trong lúc trang tải, còn thấy 2 request dạng **REST thuần, không qua wrapper**:
+   `top_trends_filtered/` và `metrics/?terms=...`. Thử gọi `metrics/` trực tiếp bằng
+   `curl` (không cookie, không browser) với seed tự chọn — **thành công**, và có
+   `days=365`. Đây chính là endpoint đang dùng trong `adapters/pinterest_trends.py`.
+
+Bài học: adapter cuối cùng KHÔNG cần Playwright — hoàn toàn httpx thuần như 3 adapter
+autocomplete kia. Bảng stack trong `CLAUDE.md` ("Playwright CHỈ cho 2 adapter cần nó")
+viết trước khi biết điều này; thực tế 0 adapter cần Playwright lúc chạy production,
+chỉ cần lúc **dò tìm** endpoint mới. Vẫn giữ Playwright là optional dependency
+(`extra browser`) phòng khi cần dò thêm nguồn khác sau này.
 
 ---
 

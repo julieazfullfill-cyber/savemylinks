@@ -84,6 +84,11 @@ class SourceAdapter(ABC):
     kind: ClassVar[str]
     default_rate_limit: ClassVar[RateLimitConfig]
     default_config: ClassVar[dict[str, Any]] = {}
+    # True (mặc định): pipeline gọi fetch(seed) một lần cho mỗi seed đang bật — đúng
+    # với mọi nguồn autocomplete (tra cứu theo từ khóa). False: nguồn trả snapshot
+    # theo quốc gia, không gắn với seed cụ thể nào (ví dụ pinterest_trends) — pipeline
+    # chỉ gọi fetch() đúng 1 lần/lượt collect, observation không gắn seed_id.
+    per_seed: ClassVar[bool] = True
 
     def __init__(
         self,

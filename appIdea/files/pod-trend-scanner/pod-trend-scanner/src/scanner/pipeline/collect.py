@@ -196,20 +196,23 @@ async def _store_observations(
     observations: list[Observation],
     *,
     source_id: int,
-    seed: Seed,
+    seed: Seed | None,
     raw_item_id: int,
 ) -> int:
+    """`seed=None` cho nguồn per_seed=False (snapshot theo quốc gia, không gắn seed cụ thể)."""
+    niche = seed.niche if seed is not None else None
+    seed_id = seed.id if seed is not None else None
     stored = 0
     for obs in observations:
         try:
-            term_id = await resolver.resolve(obs.text, obs.rank, seed.niche)
+            term_id = await resolver.resolve(obs.text, obs.rank, niche)
         except ValueError:
             continue
         session.add(
             TermObservation(
                 term_id=term_id,
                 source_id=source_id,
-                seed_id=seed.id,
+                seed_id=seed_id,
                 observed_at=obs.observed_at,
                 rank=obs.rank,
                 value=obs.value,
@@ -220,6 +223,46 @@ async def _store_observations(
     return stored
 
 
+async def _collect_once(
+    adapter: SourceAdapter, stats: CollectStats, source_id: int, source_name: str
+) -> CollectStats:
+    """Nguồn per_seed=False: gọi fetch() đúng 1 lần, không lặp qua seed.
+
+    Dùng cho snapshot theo quốc gia (ví dụ pinterest_trends) — gọi 150 lần/ngày
+    (một lần mỗi seed) sẽ mở 150 phiên trình duyệt thật cho cùng một dữ liệu,
+    vừa chậm vừa vô nghĩa vì dữ liệu không phụ thuộc seed nào cả.
+    """
+    log.info("collect.start", source=source_name, mode="per_country")
+    try:
+        raws = await adapter.fetch_safe("")
+        if not raws:
+            stats.failures += 1
+        else:
+            stats.seeds = 1
+            async with session_scope() as session:
+                resolver = TermResolver(session=session, stats=stats)
+                for raw in raws:
+                    raw_id = await _store_raw(session, source_id, raw)
+                    if raw_id is None:
+                        stats.duplicates += 1
+                        log.debug("collect.raw_duplicate", source=source_name)
+                        continue
+                    stats.fetched += 1
+                    observations = adapter.extract_safe(raw)
+                    stats.observations += await _store_observations(
+                        session,
+                        resolver,
+                        observations,
+                        source_id=source_id,
+                        seed=None,
+                        raw_item_id=raw_id,
+                    )
+    finally:
+        await adapter.aclose()
+    log.info("collect.done", **stats.as_dict())
+    return stats
+
+
 async def collect_source(
     source_name: str,
     *,
@@ -227,9 +270,13 @@ async def collect_source(
     risk_tiers: list[str] | None = None,
     limit: int | None = None,
 ) -> CollectStats:
-    """Chạy một nguồn qua toàn bộ seed đang bật.
+    """Chạy một nguồn.
 
-    `niches=None` là mặc định ba niche core; `niches=[]` là không lọc niche nào.
+    Nguồn per_seed=True (mặc định, mọi adapter autocomplete): lặp qua toàn bộ seed
+    đang bật. `niches=None` là mặc định ba niche core; `niches=[]` là không lọc niche.
+
+    Nguồn per_seed=False (snapshot theo quốc gia): gọi fetch() đúng 1 lần, bỏ qua
+    niches/risk_tiers/limit — dữ liệu không phụ thuộc seed nào.
     """
     adapter_cls = get_adapter_class(source_name)
     stats = CollectStats(source=source_name)
@@ -242,8 +289,15 @@ async def collect_source(
             log.warning("collect.source_disabled", source=source_name)
             return stats
         adapter = adapter_cls(config=source.config)
-        seeds = await load_seeds(session, selected_niches, risk_tiers, limit)
         source_id = source.id
+        seeds = (
+            await load_seeds(session, selected_niches, risk_tiers, limit)
+            if adapter_cls.per_seed
+            else []
+        )
+
+    if not adapter_cls.per_seed:
+        return await _collect_once(adapter, stats, source_id, source_name)
 
     max_requests = int(adapter.config.get("max_requests_per_run", 0) or 0)
     log.info(

@@ -107,19 +107,118 @@ integration test trên DB.
 
 ## Phase 1 — trạng thái
 
-**3/4 acceptance đạt trên DB thật. `pinterest_suggest` đã build xong (endpoint + schema
-bắt từ response thật). `pinterest_trends` vẫn bị chặn — xem bên dưới.**
+**Hoàn tất — 4/4 acceptance đạt trên DB thật + network thật.**
 
 | Hạng mục | Trạng thái |
 |---|---|
 | `adapters/google_suggest.py`, `adapters/bing_suggest.py` | xong, fixture lấy từ endpoint thật |
-| `adapters/pinterest_suggest.py` | xong — endpoint + schema bắt thật qua Chrome DevTools, cần `PINTEREST_COOKIE` để chạy thật |
-| `adapters/pinterest_trends.py` | **bị chặn** — xem "Pinterest Trends bị chặn" bên dưới |
+| `adapters/pinterest_suggest.py` | xong — endpoint + schema bắt thật, cần `PINTEREST_COOKIE` để chạy thật |
+| `adapters/pinterest_trends.py` | xong — endpoint public thật, **53 tuần lịch sử thật**, không cần cookie/đăng nhập |
+| `core/collect.py` | thêm `SourceAdapter.per_seed` — nguồn snapshot theo quốc gia (không gắn seed) gọi `fetch()` đúng 1 lần/lượt thay vì lặp qua từng seed |
 | `pipeline/metrics.py` (value_norm, velocity_7d/21d, accel, n_sources) | xong |
 | `scheduler.py` (APScheduler: collect 02:00 UTC, metrics 03:00 UTC) | xong |
 | `web/app.py` — trang HTML thô top term theo accel | xong |
-| Test | 72 passed (offline + Postgres thật) |
-| `mypy` strict | sạch, 23 file |
+| Test | 89 passed (offline + Postgres thật) |
+| `mypy` strict | sạch, 24 file |
+
+### Acceptance đã verify trên Postgres thật
+
+Chạy `google_suggest`, `bing_suggest` cùng `amazon_suggest` trên 15 seed wedding thật
+(45 request qua network thật), rồi `scanner metrics`:
+
+```
+scanner collect --source amazon_suggest --niche wedding --limit 15
+  -> {"seeds": 15, "fetched": 15, "duplicates": 0, "observations": 92,  "failures": 0}
+scanner collect --source google_suggest --niche wedding --limit 15
+  -> {"seeds": 15, "fetched": 15, "duplicates": 0, "observations": 128, "failures": 0}
+scanner collect --source bing_suggest   --niche wedding --limit 15
+  -> {"seeds": 15, "fetched": 15, "duplicates": 0, "observations": 125, "failures": 0}
+scanner metrics
+  -> {"date": "2026-09-13", "terms_scored": 302}
+```
+
+`term_metrics_daily` có `n_sources` đúng (nhiều term đạt n_sources=3, tức cả ba nguồn
+đều thấy), `value_norm` tính đúng công thức theo rank. `uvicorn scanner.web.app:app`
+chạy thật, `curl http://127.0.0.1:8009/` render đúng bảng HTML, sắp theo `accel`.
+
+**Backfill Pinterest ≥ 26 tuần (acceptance đạt, vượt yêu cầu):**
+
+```
+scanner collect --source pinterest_trends --niche wedding --limit 20
+  -> {"seeds": 20, "fetched": 20, "duplicates": 0, "observations": 159, "failures": 0}
+scanner metrics --recompute
+  -> 53 ngày, mỗi ngày 3 term (2025-09-05 .. 2026-09-04)
+```
+
+3 seed thật có đủ volume để Pinterest trả dữ liệu (`bridesmaid proposal box`,
+`will you be my bridesmaid`, `bachelorette party shirts`) — mỗi seed 53 tuần lịch sử
+thật liên tục, `term_metrics_daily` có `velocity_7d`/`velocity_21d`/`accel` tính đúng
+trên toàn bộ 53 ngày. Chi tiết endpoint ở `docs/SOURCES.md` phần pinterest_trends.
+
+Công thức velocity/accel tự nó được verify đầy đủ bằng test (offline + DB thật) trong
+`tests/test_metrics_math.py` và `tests/test_metrics_db.py`, kể cả seed một chuỗi tăng
+tuyến tính giả lập và kiểm tra slope khớp.
+
+**Rate limiter (acceptance "100 request Pinterest trong 1 phút không vượt trần"):**
+verify bằng đồng hồ ảo trong `tests/test_ratelimit.py` với đúng cấu hình Pinterest
+Trends (45 req/60s, burst 5) từ `docs/SOURCES.md`. Quá trình viết test này phát hiện
+và sửa một bug thật trong `core/ratelimit.py`: sai số làm tròn số thực có thể khiến
+`wait` còn lại một epsilon (~1e-16s) không bao giờ đủ tăng token qua ngưỡng 1.0, làm
+`acquire()` lặp vô hạn — đã thêm epsilon tolerance để sửa.
+
+**Adapter lỗi không chặn nguồn khác:** `tests/test_scheduler.py` verify
+`run_collect_all_sources` tiếp tục thử các nguồn còn lại khi một nguồn raise exception
+(ở cấp collect_source, không chỉ ở cấp từng seed — mức seed đã verify từ Phase 0). Verify
+thêm bằng dữ liệu thật: `scanner collect --source pinterest_suggest` khi chưa cấu hình
+`PINTEREST_COOKIE` — log rõ lý do (`PINTEREST_COOKIE chưa được cấu hình`) cho từng seed,
+`failures: 3`, không crash, không chặn các nguồn khác trong cùng lượt.
+
+### pinterest_suggest — endpoint + schema bắt thật, cần cookie để chạy
+
+Chrome extension `claude-in-chrome` kết nối được (trước đó báo "not connected"). Đăng
+nhập sẵn trong Chrome nên bắt được request thật ngay: mở pinterest.com, gõ vào ô
+search, đọc network requests → tìm thấy `AdvancedTypeaheadResource/get/`. Lấy schema
+response thật bằng cách cài interceptor `fetch`/`XMLHttpRequest` trong trang rồi đọc
+qua `console.log` — trả trực tiếp response ra ngoài phiên bị safety filter chặn (nội
+dung dạng cookie/query-string hoặc base64), nên phải trích riêng từng field an toàn
+(`query`, `type`, `resultIndex`, `pin_count`, …) qua console thay vì lấy nguyên JSON.
+
+Endpoint có CSRF/session check thật — gọi không cookie trả `403 Invalid Resource
+Request` (xác nhận trực tiếp bằng cách replay đúng URL/tham số thiếu CSRF header).
+Khác với pinterest_trends, endpoint này **không có đường vòng public** — cần
+`PINTEREST_COOKIE` (env) mới chạy được thật. Thiếu cookie thì fail-closed đúng thiết
+kế: log rõ lý do, trả rỗng, không crash (verify bằng dữ liệu thật). 8 test pass.
+
+### pinterest_trends — endpoint public thật, 53 tuần lịch sử, không cần Playwright
+
+Ban đầu định dùng Playwright để dò UI (Chrome DevTools automation không render được
+trang này). Playwright thật render đúng — vấn đề trước đó chỉ là dùng
+`wait_until="networkidle"` trong khi trang giữ kết nối nền liên tục, không bao giờ
+"idle". Trong lúc bắt request qua Playwright, phát hiện một endpoint REST thuần
+`https://trends.pinterest.com/metrics/?terms=<seed>&days=365&...` — khác hẳn các
+endpoint nội bộ `resource/ApiResource/get/` bị CSRF chặn. Thử gọi thẳng bằng `curl`
+(không cookie, không browser, không Playwright) với seed tự chọn — **thành công**,
+53 tuần lịch sử thật, không phải điểm dự đoán.
+
+Kết quả: `pinterest_trends.py` cuối cùng là adapter HTTP thuần (httpx), giống hệt
+pattern 3 adapter autocomplete kia — **không cần Playwright lúc chạy production**,
+chỉ cần lúc dò tìm endpoint (đã cập nhật `CLAUDE.md`, Playwright vẫn giữ làm optional
+dependency phòng khi cần dò nguồn khác sau này).
+
+Phát hiện thêm cần xử lý: `end_date` phải là một Thứ Sáu **đã publish xong** — gọi với
+hôm nay hoặc Thứ Sáu gần nhất (2 ngày trước) trả `400`, Thứ Sáu tuần trước (9 ngày
+trước) trả `200`. Độ trễ publish không cố định nên adapter tự lùi dần từng tuần khi
+gặp `400` (tối đa 4 tuần) thay vì hardcode số ngày — đã verify cả hai đường (test giả
+lập 400→200, và chạy thật gặp đúng tình huống này, tự phục hồi, log rõ).
+
+Dữ liệu là snapshot theo seed thật (không phải category), nên **không cần** cơ chế
+`per_seed=False` mới thêm ở `pipeline/collect.py` cho adapter này — cơ chế đó vẫn giữ
+lại (đã test, đã tài liệu hoá) cho một nguồn thật sự theo-quốc-gia nếu cần sau này.
+
+**Chưa làm / để sau:** route `/search/` (UI đăng nhập) có thể có thêm tính năng, nhưng
+`/metrics/` public đã đáp ứng đủ acceptance nên chưa cần khám phá thêm. `growth_rates`
+(wow/mom/yoy % thay đổi) có sẵn trong response nhưng chưa dùng trong `pipeline/metrics.py`
+— để xem xét bổ sung sau khi có dữ liệu thật chạy vài tuần.
 
 ### Acceptance đã verify trên Postgres thật
 

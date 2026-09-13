@@ -31,7 +31,7 @@ Một bước chết thì bước sau không có việc mới, không sập dây
 | ORM | SQLAlchemy 2.0 + Alembic | Migration bắt buộc, không `create_all()` |
 | Schema | Pydantic v2 | Validate mọi payload LLM |
 | Scheduler | APScheduler | Đủ dùng, không cần Airflow |
-| Browser | Playwright | CHỈ cho 2 adapter cần nó |
+| Browser | Playwright | Không adapter nào cần lúc chạy production (xem docs/SOURCES.md phần pinterest_trends) — giữ làm optional dependency (`extra browser`) để dò endpoint mới khi cần |
 | Web | FastAPI + Jinja2 + HTMX | Không dựng SPA cho dashboard nội bộ |
 | Log | `structlog` (JSON) | |
 | Test | `pytest` + `pytest-asyncio` | |
