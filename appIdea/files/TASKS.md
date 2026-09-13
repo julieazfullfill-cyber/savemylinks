@@ -34,7 +34,7 @@ Mục tiêu: có velocity thật. Đây là phase quan trọng nhất, đừng r
 
 - [x] `adapters/google_suggest.py`
 - [x] `adapters/bing_suggest.py`
-- [ ] `adapters/pinterest_suggest.py`
+- [x] `adapters/pinterest_suggest.py`
 - [ ] `adapters/pinterest_trends.py` — Playwright, và **backfill 52 tuần lịch sử**
 - [x] `core/ratelimit.py` — token bucket theo từng source
 - [x] `pipeline/metrics.py` — velocity_7d, accel, n_sources, ghi `term_metrics_daily`

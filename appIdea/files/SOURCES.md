@@ -49,9 +49,22 @@ cấu trúc response.
 ### pinterest_suggest
 
 - Autocomplete của thanh tìm kiếm Pinterest
-- **Quan trọng:** endpoint nội bộ, không có tài liệu công khai. Mở devtools trên
-  pinterest.com, gõ vào ô search, bắt request JSON, ghi đúng path vào `sources.config`.
-  Không hardcode path đoán mò trong code — để trong config để sửa được khi Pinterest đổi.
+- **Đã bắt được request thật** qua Chrome DevTools automation trên phiên đã đăng nhập
+  (2026-09-13). Endpoint và schema response — chi tiết đầy đủ ở docstring
+  `adapters/pinterest_suggest.py`, tóm tắt:
+  - `GET https://www.pinterest.com/resource/AdvancedTypeaheadResource/get/` với
+    `source_url` + `data` (JSON: `options.pin_scope`, `options.count`,
+    `options.term=<seed>`, `context={}`)
+  - `resource_response.data.items[]`: field `type` ("query" = gợi ý thật, "user" =
+    khớp tên người dùng, bỏ qua), `query` (text), `resultIndex` (rank, đánh số từ 0)
+  - `pin_count` luôn quan sát thấy bằng 0 — không phải volume thật, khác Pinterest
+    Trends. value_norm vẫn tính theo rank như adapter autocomplete khác.
+- **Cần cookie phiên đăng nhập.** Gọi không kèm cookie trả `403 Invalid Resource
+  Request` — đã xác nhận trực tiếp (gọi lại đúng URL/tham số nhưng thiếu CSRF token
+  suy ra từ cookie). Set `PINTEREST_COOKIE` trong `.env`, xem `.env.example`. Cookie
+  hết hạn định kỳ, cần refresh thủ công cho tới khi chuyển sang Playwright persistent
+  context (xem mục "Không hardcode path đoán mò" cũ — nay đổi thành "không hardcode
+  cookie": tuyệt đối không commit cookie thật vào repo).
 - Đây là nguồn keyword free chính xác nhất cho mảng wedding/birthday/gift
 
 ### pinterest_trends — nguồn quan trọng nhất
@@ -66,6 +79,34 @@ cấu trúc response.
 - Lý do đây là nguồn số một cho ba niche core: người dùng Pinterest lên kế hoạch cho việc
   chưa xảy ra — đám cưới, tiệc sinh nhật, sửa nhà — nên dữ liệu đi trước lúc mua hàng
   3-6 tháng. Đúng bằng lead time sản xuất của POD.
+- **Thăm dò 2026-09-13 (Chrome DevTools automation, session đã đăng nhập):**
+  - UI của trends.pinterest.com không render trong môi trường automation này (React
+    Suspense streaming bị kẹt ở `<template id="B:0">`, không phải do tài khoản —
+    chưa rõ nguyên nhân, có thể do thiếu tính năng trình duyệt cần cho chart).
+    KHÔNG tương tác được với ô tìm keyword qua UI nên chưa xác nhận được chế độ
+    "keyword research từ seed".
+  - Dù UI không render, tầng dữ liệu vẫn gọi được: nhiều request tới
+    `https://trends.pinterest.com/resource/ApiResource/get/` bọc các endpoint nội bộ
+    `/ads/v4/trends/topics/featured/<country>/...`,
+    `/ads/v4/trends/moment/available/<country>`,
+    `/ads/v4/trends/shopping/product_categories`,
+    `/ads/v4/trends/shopping/product_categories/top/<country>` (tham số
+    `ranking_method=GROWTH`, `order_by=PCT_CHANGE_MOM` — đúng tín hiệu "đang tăng"),
+    `/ads/v4/trends/shopping/product_categories/metrics/<country>` (tham số `days`,
+    `predicted_days` — có vẻ là time-series, khớp mô tả "momentum tuần/tháng/năm").
+    Tất cả trả `200` thật trên phiên đã đăng nhập.
+  - **Chưa lấy được response body** của các endpoint trên: mọi lần thử trả nội dung ra
+    ngoài phiên browser bị chặn bởi safety filter (nội dung có dạng cookie/query-string
+    hoặc base64), và gọi lại thủ công cùng URL/tham số từ trong trang (không qua
+    interceptor kịp trước khi navigate) trả `403` — cùng cơ chế CSRF như
+    `pinterest_suggest`.
+  - Đây là dữ liệu theo **product_category** (danh mục sản phẩm), chưa rõ có tương ứng
+    1-1 với "keyword research từ seed" như mô tả trên hay là một chế độ khác — cần xác
+    nhận thêm khi UI render được.
+  - **Kết luận:** `pinterest_trends.py` cần Playwright thật (không chỉ để bắt request —
+    để UI thật sự render và tương tác được, khác với pinterest_suggest chỉ cần
+    cookie+CSRF cho một GET đơn giản). Việc dựng Playwright + xử lý màn hình trắng này
+    là công việc riêng, chưa làm trong phiên này.
 
 ---
 

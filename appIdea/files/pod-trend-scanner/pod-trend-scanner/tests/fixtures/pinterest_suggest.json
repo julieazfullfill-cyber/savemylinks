@@ -1,0 +1,25 @@
+{
+  "resource_response": {
+    "status": "success",
+    "code": 0,
+    "message": "OK",
+    "endpoint_name": "v3_autocomplete_handler",
+    "http_status": 200,
+    "data": {
+      "items": [
+        {"query": "wedding invitations", "type": "query", "pin_count": 0, "resultIndex": 0, "identifier_icon_name": null, "label": "wedding invitations"},
+        {"query": "wedding ideas", "type": "query", "pin_count": 0, "resultIndex": 1, "identifier_icon_name": null, "label": "wedding ideas"},
+        {"query": "wedding rings", "type": "query", "pin_count": 0, "resultIndex": 2, "identifier_icon_name": null, "label": "wedding rings"},
+        {"query": "wedding dress", "type": "query", "pin_count": 0, "resultIndex": 3, "identifier_icon_name": null, "label": "wedding dress"},
+        {"query": "wedding aesthetic", "type": "query", "pin_count": 0, "resultIndex": 4, "identifier_icon_name": null, "label": "wedding aesthetic"},
+        {"query": "wedding photo ideas", "type": "query", "pin_count": 0, "resultIndex": 5, "identifier_icon_name": null, "label": "wedding photo ideas"},
+        {"query": "wedding cards", "type": "query", "pin_count": 0, "resultIndex": 6, "identifier_icon_name": null, "label": "wedding cards"},
+        {"query": "wedding decorations", "type": "query", "pin_count": 0, "resultIndex": 7, "identifier_icon_name": null, "label": "wedding decorations"},
+        {"query": "wedding bouquet", "type": "query", "pin_count": 0, "resultIndex": 8, "identifier_icon_name": null, "label": "wedding bouquet"},
+        {"query": "wedding outfit", "type": "query", "pin_count": 0, "resultIndex": 9, "identifier_icon_name": null, "label": "wedding outfit"},
+        {"type": "user", "identifier_icon_name": null},
+        {"query": "wedding photos", "type": "query", "pin_count": 0, "resultIndex": 11, "identifier_icon_name": null, "label": "wedding photos"}
+      ]
+    }
+  }
+}

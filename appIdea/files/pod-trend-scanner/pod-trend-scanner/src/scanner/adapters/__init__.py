@@ -8,11 +8,13 @@ from scanner.adapters.amazon_suggest import AmazonSuggestAdapter
 from scanner.adapters.base import Observation, RawItem, SourceAdapter
 from scanner.adapters.bing_suggest import BingSuggestAdapter
 from scanner.adapters.google_suggest import GoogleSuggestAdapter
+from scanner.adapters.pinterest_suggest import PinterestSuggestAdapter
 
 REGISTRY: dict[str, type[SourceAdapter]] = {
     AmazonSuggestAdapter.name: AmazonSuggestAdapter,
     GoogleSuggestAdapter.name: GoogleSuggestAdapter,
     BingSuggestAdapter.name: BingSuggestAdapter,
+    PinterestSuggestAdapter.name: PinterestSuggestAdapter,
 }
 
 
@@ -29,6 +31,7 @@ __all__ = [
     "BingSuggestAdapter",
     "GoogleSuggestAdapter",
     "Observation",
+    "PinterestSuggestAdapter",
     "RawItem",
     "SourceAdapter",
     "get_adapter_class",

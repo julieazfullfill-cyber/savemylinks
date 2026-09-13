@@ -145,8 +145,14 @@ class SourceAdapter(ABC):
             )
             return []
 
-    async def get_json(self, url: str, params: dict[str, Any]) -> Any:
-        """GET có rate limit + retry backoff. Dùng chung cho adapter HTTP."""
+    async def get_json(
+        self, url: str, params: dict[str, Any], headers: dict[str, str] | None = None
+    ) -> Any:
+        """GET có rate limit + retry backoff. Dùng chung cho adapter HTTP.
+
+        `headers` merge thêm vào header mặc định của client (không ghi đè User-Agent
+        trừ khi tự truyền) — dùng khi một nguồn cần header riêng, ví dụ cookie phiên.
+        """
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=1, max=8),
@@ -155,7 +161,7 @@ class SourceAdapter(ABC):
         ):
             with attempt:
                 async with self.rate_limit:
-                    response = await self.client.get(url, params=params)
+                    response = await self.client.get(url, params=params, headers=headers)
                 if response.status_code in RETRYABLE_STATUS:
                     raise RetryableHTTPError(f"{response.status_code} từ {url}")
                 response.raise_for_status()

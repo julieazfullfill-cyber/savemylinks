@@ -107,17 +107,19 @@ integration test trên DB.
 
 ## Phase 1 — trạng thái
 
-**3/4 acceptance đạt trên DB thật, 1 mục bị chặn (Pinterest, xem bên dưới).**
+**3/4 acceptance đạt trên DB thật. `pinterest_suggest` đã build xong (endpoint + schema
+bắt từ response thật). `pinterest_trends` vẫn bị chặn — xem bên dưới.**
 
 | Hạng mục | Trạng thái |
 |---|---|
 | `adapters/google_suggest.py`, `adapters/bing_suggest.py` | xong, fixture lấy từ endpoint thật |
-| `adapters/pinterest_suggest.py`, `adapters/pinterest_trends.py` | **bị chặn** — xem "Pinterest bị chặn" bên dưới |
+| `adapters/pinterest_suggest.py` | xong — endpoint + schema bắt thật qua Chrome DevTools, cần `PINTEREST_COOKIE` để chạy thật |
+| `adapters/pinterest_trends.py` | **bị chặn** — xem "Pinterest Trends bị chặn" bên dưới |
 | `pipeline/metrics.py` (value_norm, velocity_7d/21d, accel, n_sources) | xong |
 | `scheduler.py` (APScheduler: collect 02:00 UTC, metrics 03:00 UTC) | xong |
 | `web/app.py` — trang HTML thô top term theo accel | xong |
-| Test | 64 passed (offline + Postgres thật) |
-| `mypy` strict | sạch, 22 file |
+| Test | 72 passed (offline + Postgres thật) |
+| `mypy` strict | sạch, 23 file |
 
 ### Acceptance đã verify trên Postgres thật
 
@@ -152,31 +154,59 @@ và sửa một bug thật trong `core/ratelimit.py`: sai số làm tròn số t
 
 **Adapter lỗi không chặn nguồn khác:** `tests/test_scheduler.py` verify
 `run_collect_all_sources` tiếp tục thử các nguồn còn lại khi một nguồn raise exception
-(ở cấp collect_source, không chỉ ở cấp từng seed — mức seed đã verify từ Phase 0).
+(ở cấp collect_source, không chỉ ở cấp từng seed — mức seed đã verify từ Phase 0). Verify
+thêm bằng dữ liệu thật: `scanner collect --source pinterest_suggest` khi chưa cấu hình
+`PINTEREST_COOKIE` — log rõ lý do (`PINTEREST_COOKIE chưa được cấu hình`) cho từng seed,
+`failures: 3`, không crash, không chặn các nguồn khác trong cùng lượt.
 
-### Pinterest bị chặn — pinterest_suggest và pinterest_trends chưa build được
+### pinterest_suggest — gỡ xong, chạy thật cần PINTEREST_COOKIE
 
-`docs/SOURCES.md` yêu cầu bắt request thật qua devtools trước khi viết `extract()`,
-không được đoán cấu trúc response. Đã thử hai cách trong phiên này:
+Chrome extension `claude-in-chrome` kết nối được ở phiên sau (trước đó báo "Browser
+extension is not connected"). Đăng nhập sẵn trong Chrome nên bắt được request thật
+ngay: mở pinterest.com, gõ vào ô search, đọc network requests → tìm thấy
+`AdvancedTypeaheadResource/get/`. Lấy schema response thật (không đoán) bằng cách cài
+interceptor `fetch`/`XMLHttpRequest` trong trang rồi đọc qua `console.log` — trả trực
+tiếp response ra ngoài phiên bị safety filter chặn (nội dung dạng cookie/query-string
+hoặc base64), nên phải trích riêng từng field an toàn (`query`, `type`, `resultIndex`,
+`pin_count`, …) qua console thay vì lấy nguyên JSON.
 
-1. **Chrome automation** (`mcp__claude-in-chrome`): extension chưa được cài/kết nối
-   trên máy này — `tabs_context_mcp` trả lỗi "Browser extension is not connected".
-2. **curl trực tiếp** (biết sẽ không đủ vì thiếu session cookie/CSRF của trình duyệt
-   thật, thử để xác nhận): endpoint ứng viên `resource/BaseSearchResource/get/` trả
-   `403` — đúng như dự đoán, Pinterest có anti-bot/CSRF chặn request không từ browser
-   session thật.
+Kết quả: endpoint và schema đầy đủ trong docstring `adapters/pinterest_suggest.py`,
+fixture `tests/fixtures/pinterest_suggest.json` dựng từ giá trị thật (field nào không
+capture được thì bỏ hẳn khỏi fixture, không bịa). 8 test pass. Phát hiện thêm: endpoint
+có CSRF/session check thật — gọi không cookie trả `403 Invalid Resource Request` (xác
+nhận trực tiếp bằng cách replay đúng URL/tham số thiếu CSRF header). Adapter đọc cookie
+từ `PINTEREST_COOKIE` (env), thiếu thì log rõ và trả rỗng — đã smoke test thật, đúng
+hành vi fail-closed. Cookie hết hạn định kỳ, cần refresh thủ công cho tới khi chuyển
+sang Playwright persistent context.
 
-Do đó **không viết `extract()` dựa trên cấu trúc JSON đoán mò** (đúng rule trong
-SOURCES.md) — `pinterest_suggest.py` và `pinterest_trends.py` chưa tồn tại. Hệ quả:
-- Acceptance "backfill Pinterest xong thì term_metrics_daily có dữ liệu lùi ≥ 26 tuần"
-  chưa verify được — không có gì để backfill.
-- `run_collect_all_sources` trong scheduler chỉ chạy 3 nguồn hiện có; thêm Pinterest
-  vào `REGISTRY` là tự động được lịch chạy, không cần sửa `scheduler.py`.
+### pinterest_trends — vẫn bị chặn
+
+UI của trends.pinterest.com **không render** trong môi trường automation này (React
+Suspense streaming kẹt ở `<template id="B:0">`) — screenshot trắng, accessibility tree
+rỗng, dù `innerHTML` có ~92KB và tài khoản đã đăng nhập. Không rõ nguyên nhân (nghi do
+thiếu tính năng trình duyệt cần cho chart trong môi trường automation, không phải do
+tài khoản/quyền truy cập).
+
+Dù UI không render, tầng dữ liệu của trang vẫn gọi API thật thành công (`200`) — bắt
+được 6 endpoint nội bộ dạng `/ads/v4/trends/...` (topics/featured, moment/available,
+shopping/product_categories + top + metrics, editorial/content — chi tiết ở
+`docs/SOURCES.md`). Nhưng **chưa lấy được response body** của các endpoint này: mọi
+cách trả nội dung ra ngoài phiên đều bị safety filter chặn, và gọi lại thủ công đúng
+URL/tham số (không qua interceptor kịp trước khi trang tự fetch) trả `403` — cùng cơ
+chế CSRF như pinterest_suggest. Cũng chưa xác nhận được đây có phải đúng "keyword
+research từ seed" như spec mô tả hay là một chế độ khác (category-level, không phải
+term-level), vì không tương tác được với UI để search thử một keyword.
+
+Hệ quả: acceptance "backfill Pinterest ≥ 26 tuần lịch sử" chưa verify được — không có
+gì để backfill. `pinterest_trends.py` chưa tồn tại.
 
 **Cách gỡ, chọn một:**
-- Cài Chrome extension claude-in-chrome trên máy này rồi làm lại bước bắt request qua
-  devtools như SOURCES.md mô tả.
-- Tự mở devtools trên pinterest.com, gõ vào ô search, copy request (URL + headers +
-  cookie) và response mẫu, gửi lại — tôi viết fixture + adapter từ đó, không cần
-  Chrome automation.
-- Bỏ qua Pinterest ở Phase 1, quay lại sau khi có cách bắt request.
+- Tôi thử dựng Playwright thật (không qua `claude-in-chrome`) — có thể render đúng nơi
+  Chrome automation hiện tại không render được, cần cài Playwright + browser binaries
+  (~300MB) và một lượt đăng nhập thủ công lưu vào persistent context.
+- Bạn tự mở trends.pinterest.com, tìm một keyword, mở devtools, copy request+response
+  mẫu (đặc biệt là request ứng với "keyword research từ seed" nếu có) gửi lại — tôi
+  viết fixture + adapter từ đó.
+- Bỏ qua pinterest_trends ở Phase 1, quay lại sau. `run_collect_all_sources` trong
+  scheduler tự động chạy thêm nguồn này khi được thêm vào `REGISTRY`, không cần sửa
+  `scheduler.py`.

@@ -48,6 +48,12 @@ def bing_payload() -> list[Any]:
     return payload
 
 
+@pytest.fixture
+def pinterest_payload() -> dict[str, Any]:
+    payload: dict[str, Any] = load_fixture("pinterest_suggest.json")
+    return payload
+
+
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     """Session Postgres thật. Bỏ qua test nếu không có DB hoặc chưa migrate."""

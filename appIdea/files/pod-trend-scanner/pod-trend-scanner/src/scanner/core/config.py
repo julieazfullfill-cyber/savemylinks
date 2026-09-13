@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     collect_country: str = "US"
     http_timeout_seconds: float = 15.0
     http_user_agent: str = BROWSER_USER_AGENT
+    # Endpoint nội bộ Pinterest chặn request không kèm cookie session + CSRF token
+    # hợp lệ (xác nhận qua devtools thật: request giống hệt nhưng thiếu cookie -> 403
+    # "Invalid Resource Request"). Tạm thời cần export cookie thủ công từ trình duyệt
+    # đã đăng nhập; giải pháp lâu dài là chuyển sang Playwright với persistent context
+    # (xem docs/SOURCES.md phần pinterest_suggest).
+    pinterest_cookie: str | None = None
 
 
 @lru_cache
