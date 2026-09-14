@@ -14,7 +14,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scanner.core.db import get_sessionmaker
-from scanner.core.models import Candidate, Seed, Term, TermMetricsDaily, TermObservation
+from scanner.core.models import (
+    Candidate,
+    RiskFlag,
+    Seed,
+    Term,
+    TermMetricsDaily,
+    TermObservation,
+)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -134,3 +141,58 @@ async def candidates_page(
             "selected_risk_tier": risk_tier,
         },
     )
+
+
+async def review_queue(session: AsyncSession) -> list[dict[str, Any]]:
+    """Candidate `status='pending'` có risk_level 'review' hoặc 'blocked' — Lớp 4
+    (RISK_POLICY.md): chỉ HIỂN THỊ hàng đợi, nút duyệt/từ chối thật là việc Phase 4.
+    """
+    risk_subq = (
+        select(TermObservation.term_id, func.max(Seed.risk_tier).label("risk_tier"))
+        .join(Seed, Seed.id == TermObservation.seed_id)
+        .group_by(TermObservation.term_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            Candidate.id,
+            Candidate.risk_level,
+            Candidate.momentum,
+            Candidate.opportunity,
+            Term.id.label("term_id"),
+            Term.text_display,
+            Term.niche,
+            risk_subq.c.risk_tier,
+        )
+        .join(Term, Term.id == Candidate.term_id)
+        .outerjoin(risk_subq, risk_subq.c.term_id == Term.id)
+        .where(Candidate.status == "pending", Candidate.risk_level.in_(("review", "blocked")))
+        .order_by(Candidate.risk_level.desc(), Candidate.id.desc())
+    )
+    rows = [dict(r._mapping) for r in (await session.execute(stmt)).all()]
+    if not rows:
+        return rows
+
+    term_ids = [r["term_id"] for r in rows]
+    flags = (
+        await session.execute(
+            select(RiskFlag)
+            .where(RiskFlag.term_id.in_(term_ids))
+            .order_by(RiskFlag.term_id, RiskFlag.created_at.desc())
+        )
+    ).scalars().all()
+    flags_by_term: dict[int, list[RiskFlag]] = {}
+    for f in flags:
+        if f.term_id is not None:
+            flags_by_term.setdefault(f.term_id, []).append(f)
+    for row in rows:
+        row["flags"] = flags_by_term.get(row["term_id"], [])
+    return rows
+
+
+@app.get("/review", response_class=HTMLResponse)
+async def review_page(request: Request) -> HTMLResponse:
+    """Hàng đợi chờ người duyệt (Lớp 4) — chỉ đọc, xem docstring review_queue()."""
+    async with get_sessionmaker()() as session:
+        rows = await review_queue(session)
+    return templates.TemplateResponse(request, "review.html", {"rows": rows})

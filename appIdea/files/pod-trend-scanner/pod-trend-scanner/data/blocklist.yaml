@@ -1,0 +1,92 @@
+# Blocklist Lớp 1 — docs/RISK_POLICY.md. Rẻ, nhanh, chặn phần lớn trường hợp rõ ràng.
+#
+# Đây là bộ khởi động MINH HOẠ (illustrative), không đầy đủ — cần bổ sung liên tục khi
+# gặp case mới trong production. Mỗi entry là một CỤM TỪ, so khớp dạng "word boundary,
+# không phân biệt hoa thường" trên text đã chuẩn hoá (core/normalize.normalize), nghĩa
+# là entry "star wars" bắt được "Star Wars", "STAR WARS mug", "star-wars tee"...
+#
+# `political` dùng REGEX PATTERN (không phải tên ứng viên cụ thể đang tại nhiệm) — an
+# toàn hơn về mặt trung lập chính trị, và thực ra bắt tốt hơn với khẩu hiệu mới chưa
+# từng thấy (xem docs/RISK_POLICY.md "Quy tắc riêng cho T3": khẩu hiệu vận động luôn
+# bị chặn, "cũ hay mới").
+
+franchises:
+  - Disney
+  - Pixar
+  - Marvel
+  - Star Wars
+  - Harry Potter
+  - Hogwarts
+  - Pokemon
+  - Pokémon
+  - Nintendo
+  - Super Mario
+  - Minecraft
+  - Star Trek
+  - Jurassic Park
+  - Stranger Things
+  - Grinch
+  - Winnie the Pooh
+  - Mickey Mouse
+  - Hello Kitty
+  - Sanrio
+  - Peanuts
+  - Snoopy
+  - Looney Tunes
+  - DC Comics
+  - Batman
+  - Spider-Man
+  - Barbie
+
+music:
+  # Tên nghệ sĩ/ban nhạc + TÊN BÀI HÁT — không đưa lời bài hát nguyên văn vào đây
+  # (bản quyền lời nhạc khác quy định với tên bài/tên nghệ sĩ).
+  - Taylor Swift
+  - Swiftie
+  - Beyonce
+  - Beyoncé
+  - Eras Tour
+  - Grateful Dead
+  - Metallica
+  - Nirvana
+
+people:
+  # Người thật nổi tiếng có rủi ro right-of-publicity cao trên hàng POD.
+  - Michael Jackson
+  - Elvis Presley
+  - Bob Ross
+  - Betty White
+  - Dolly Parton
+
+sports:
+  - NFL
+  - NBA
+  - MLB
+  - NHL
+  - FIFA
+  - Super Bowl
+  - World Cup
+  - Olympics
+  - Yankees
+  - Lakers
+  - Cowboys
+
+registered_marks:
+  # Khẩu hiệu đã biết là nhãn hiệu đã đăng ký — không phải danh từ chung.
+  - Just Do It
+  - Because You're Worth It
+  - I'm Lovin' It
+  - Got Milk
+
+political:
+  # Regex, không phải chuỗi thường (khác 5 nhóm trên) — check_blocklist() biết nhóm
+  # này là pattern qua tên key "political", xem docstring pipeline/risk.py.
+  - '\bmake\s+\w+\s+great\s+again\b'
+  - '\b(vote|elect)\s+for\s+\w+\s+(20\d\d)\b'
+  - '\b\w+\s+20(2[4-9]|3\d)\b' # "somename 2028" kiểu khẩu hiệu tranh cử theo năm
+  - '\bre-?elect\s+\w+\b'
+  - '\bdemocratic\s+party\b'
+  - '\brepublican\s+party\b'
+  - '\b(gop|maga)\b'
+  - '\bimpeach\s+\w+\b'
+  - '\b\w+\s+for\s+(president|congress|senate|governor)\b'

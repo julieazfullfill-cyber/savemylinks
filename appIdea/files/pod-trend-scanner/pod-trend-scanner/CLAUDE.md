@@ -67,7 +67,7 @@ src/scanner/
     enrich.py         # competing_listings + saturation_score -> term_enrichment
     import_etsy.py    # CSV importer (KHÔNG scraper) -> source.kind='import'
     score.py          # momentum + opportunity (2 trục riêng) -> candidates
-    risk.py
+    risk.py          # 4 lớp risk gate, fail-closed — xem docs/RISK_POLICY.md
     brief.py         # LLM sinh design_brief
     render.py        # brief -> image prompt (code thuần, KHÔNG dùng LLM)
   web/
@@ -79,6 +79,7 @@ tests/
 migrations/
 data/seed_keywords.json
 data/occasions.json
+data/blocklist.yaml
 docs/
 ```
 
@@ -144,7 +145,9 @@ uv run scanner enrich          # top term theo accel -> term_enrichment (top-100
 uv run scanner score           # momentum + opportunity -> candidates
 uv run scanner calendar --niche wedding   # seed nào nên sản xuất hôm nay
 uv run scanner import-etsy --file export.csv   # CSV từ eRank/Everbee/Alura, KHÔNG scraper
-uv run uvicorn scanner.web.app:app --reload   # / top term, /candidates scatter momentum×opportunity
+uv run scanner risk            # 4 lớp risk gate cho candidate mới, ghi risk_flags
+uv run scanner approve --candidate-id N --by ai_đó   # T2/T3 bắt buộc --by
+uv run uvicorn scanner.web.app:app --reload   # / top term, /candidates scatter, /review hàng đợi duyệt
 ```
 
 ## Định nghĩa "xong" cho mọi task

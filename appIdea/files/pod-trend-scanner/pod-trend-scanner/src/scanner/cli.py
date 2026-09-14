@@ -19,6 +19,12 @@ from scanner.pipeline.calendar import production_calendar
 from scanner.pipeline.collect import collect_source
 from scanner.pipeline.enrich import DEFAULT_TOP_N, enrich_top_terms
 from scanner.pipeline.import_etsy import import_etsy_csv
+from scanner.pipeline.risk import (
+    ApprovalRequiredError,
+    approve_candidate,
+    determine_risk_tier,
+    run_risk_gate_for_pending_candidates,
+)
 from scanner.pipeline.metrics import recompute_history, run_metrics
 from scanner.pipeline.score import DEFAULT_TOP_N as SCORE_DEFAULT_TOP_N
 from scanner.pipeline.score import score_candidates
@@ -246,6 +252,57 @@ def import_etsy(
                     session, file, term_column=term_column, value_column=value_column
                 )
                 return stats.as_dict()
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command()
+def risk(
+    limit: Annotated[int, typer.Option("--limit", help="số candidate tối đa mỗi lượt")] = 100,
+) -> None:
+    """Chạy risk gate (4 lớp) cho candidate pending chưa có risk_level, ghi risk_flags."""
+    _setup()
+
+    async def run() -> dict[str, int]:
+        try:
+            async with session_scope() as session:
+                stats = await run_risk_gate_for_pending_candidates(session, limit=limit)
+                return stats.as_dict()
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command()
+def approve(
+    candidate_id: Annotated[int, typer.Option("--candidate-id", help="id trong bảng candidates")],
+    by: Annotated[str, typer.Option("--by", help="tên/email người duyệt")],
+) -> None:
+    """Duyệt một candidate. T2/T3 bắt buộc --by, không có đường tắt."""
+    _setup()
+
+    async def run() -> dict[str, str]:
+        from scanner.core.models import Candidate
+
+        try:
+            async with session_scope() as session:
+                candidate = await session.get(Candidate, candidate_id)
+                if candidate is None:
+                    return {"error": f"không có candidate id={candidate_id}"}
+                tier = await determine_risk_tier(session, candidate.term_id)
+                try:
+                    await approve_candidate(session, candidate, tier, approved_by=by)
+                except ApprovalRequiredError as exc:
+                    return {"error": str(exc)}
+                return {
+                    "candidate_id": str(candidate_id),
+                    "risk_tier": tier,
+                    "status": candidate.status,
+                    "approved_by": candidate.approved_by or "",
+                }
         finally:
             await dispose_engine()
 

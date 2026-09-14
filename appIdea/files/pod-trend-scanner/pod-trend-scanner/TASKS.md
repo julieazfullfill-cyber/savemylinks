@@ -72,10 +72,10 @@ Mục tiêu: biết term nào đáng làm, và biết làm vào lúc nào.
 
 Đọc `docs/RISK_POLICY.md` trước khi bắt đầu. Không rút gọn phase này để chạy nhanh hơn.
 
-- [ ] Lớp 1: blocklist regex, load từ `data/blocklist.yaml`
-- [ ] Lớp 2: USPTO lookup, exact phrase + normalized, lọc class 25, cache 30 ngày
-- [ ] Lớp 3: LLM origin classification
-- [ ] Lớp 4: trạng thái chờ người duyệt trong dashboard
+- [x] Lớp 1: blocklist regex, load từ `data/blocklist.yaml`
+- [x] Lớp 2: USPTO lookup, exact phrase + normalized, lọc class 25, cache 30 ngày
+- [x] Lớp 3: LLM origin classification
+- [x] Lớp 4: trạng thái chờ người duyệt trong dashboard
 - [ ] Ghi `risk_flags`, enforce fail-closed ở `pipeline/brief.py`
 
 **Acceptance**

@@ -390,3 +390,80 @@ suy từ seed đã sinh ra observation của term (candidate không tự có ris
 thể không gắn seed nào, ví dụ tới từ pinterest_trends/etsy_csv_import, thì để trống,
 không đoán). Chạy thật qua `uvicorn`, `curl http://127.0.0.1:8010/candidates` render
 đúng.
+
+## Phase 3 — trạng thái
+
+**Hoàn tất phần lõi — 4 lớp risk gate hoạt động đúng fail-closed, verify thật trên
+Postgres. Một mục để lại có chủ đích cho Phase 4 — xem bên dưới.**
+
+| Hạng mục | Trạng thái |
+|---|---|
+| Lớp 1 — blocklist (`data/blocklist.yaml` + `pipeline/risk.py`) | xong, 20/20 cụm dính nhãn hiệu bắt được, 0/20 false positive |
+| Lớp 2 — USPTO | xong về mặt fail-closed; **endpoint chưa xác minh được** (WAF chặn) — xem ghi chú |
+| Lớp 3 — LLM origin classification | xong về mặt fail-closed; **chưa gọi được LLM thật** (thiếu ANTHROPIC_API_KEY) |
+| Lớp 4 — hàng đợi chờ duyệt | xong — trang `/review` (đọc), `scanner approve` (CLI), enforce T2/T3 cứng |
+| `risk_flags` + enforce fail-closed | risk_flags: xong. Enforce ở `pipeline/brief.py`: **để lại cho Phase 4** — brief.py chưa tồn tại, xem ghi chú |
+| `scheduler.py` | thêm job risk (04:00 UTC) |
+| Test | 215 passed (offline + Postgres thật) |
+| `mypy` strict | sạch, 30 file |
+
+### Acceptance đã verify
+
+```
+scanner risk
+  -> chạy trên 2 candidate thật: 1 "Star Wars Mug" (T0) -> blocked
+                                  1 "Veteran Pride Shirt" (T3) -> review
+scanner approve --candidate-id 1 --by tester
+  -> {"error": "candidate đã bị blocked, không thể approve"}
+scanner approve --candidate-id 2 --by ""
+  -> {"error": "tier T3 bắt buộc approved_by, không có đường tắt (RISK_POLICY.md)"}
+scanner approve --candidate-id 2 --by cong@example.com
+  -> {"status": "approved", "approved_by": "cong@example.com"}
+```
+
+- **"Term chứa franchise trong blocklist → blocked, không bao giờ tới brief":** verify
+  thật (trên) + `tests/test_risk_gate_db.py` — candidate blocked không có code path nào
+  approve được (`ApprovalRequiredError` ngay cả khi truyền `approved_by`).
+- **"Term T3 không bao giờ đạt approved mà không có approved_by":** verify thật (trên)
+  + test. `approve_candidate()` là **điểm duy nhất** được set `status='approved'` trong
+  toàn bộ codebase — không có đường tắt nào khác ghi được vào cột đó.
+- **"USPTO API down → review, không rơi vào pass":** `tests/test_risk_uspto.py` — mock
+  500, timeout, JSON hỏng, đều ra `review`. Không có key cũng `review` (verify thật).
+- **Bộ 20 cụm dính nhãn hiệu bắt được ≥ 18:** verify **20/20**, 0 false positive trên
+  bộ 20 cụm generic — vượt xa yêu cầu.
+
+### Quyết định spec chưa rõ / thiếu, tự chọn (đã nói trước khi code)
+
+**`pipeline/brief.py` chưa tồn tại** (Phase 4) nhưng TASKS.md Phase 3 yêu cầu "enforce
+fail-closed ở pipeline/brief.py". Xây `is_eligible_for_export()` + `approve_candidate()`
+trong `pipeline/risk.py` làm hàm chặn dùng chung, đã test đầy đủ — Phase 4 chỉ cần gọi
+lại, không phải viết logic chặn từ đầu.
+
+**Cache USPTO:** RISK_POLICY.md nói cache trong `term_enrichment`, nhưng bảng đó không
+có cột nào cho USPTO (chỉ có competing_listings/saturation_score/commercial_signal của
+enrich.py). Dùng `risk_flags` làm cache thay thế (tìm bản ghi layer='uspto' gần nhất
+trong 30 ngày) — đúng mục đích bảng này vốn có, không cần đổi schema.
+
+**risk_tier của một term:** không có cột riêng — suy từ MAX(risk_tier) trong các seed
+đã sinh observation cho term. Term không gắn seed nào (pinterest_trends,
+etsy_csv_import) → mặc định **T2** (yêu cầu đủ 4 lớp), không suy đoán về phía lỏng.
+
+**Blocklist "political":** dùng regex pattern (khẩu hiệu dạng "X 2028", "Make ... Great
+Again", tên đảng/PAC chung) thay vì liệt kê tên ứng viên cụ thể đang tại nhiệm — trung
+lập hơn, và bắt được khẩu hiệu MỚI chưa từng thấy (RISK_POLICY.md: "khẩu hiệu vận động,
+cũ hay mới" đều phải chặn). Verify: bắt được cả câu chưa từng đưa vào danh sách
+("re-elect johnson shirt", "smith for governor").
+
+### Hai việc thật sự chưa xong — cần bạn hoặc thời gian
+
+1. **Endpoint USPTO chưa xác minh bằng request thật.** `tmsearch.uspto.gov` (giao diện
+   mới) có AWS WAF JS-challenge chặn hoàn toàn HTTP đơn giản — đã thử thật (curl thấy
+   `challenge.js` từ `edge.sdk.awswaf.com`), không phải đoán. Code hiện dùng endpoint
+   theo tài liệu công khai của USPTO Developer Hub (`api.uspto.gov`), **chưa xác nhận
+   được URL này đúng** vì không có `USPTO_API_KEY` để test thật. An toàn về mặt
+   fail-closed (URL sai vẫn chỉ rơi vào "review", không bao giờ "pass" sai), nhưng cần
+   key thật + xác nhận URL trước khi tin dữ liệu USPTO là chính xác.
+2. **Chưa gọi được LLM thật.** Không có `ANTHROPIC_API_KEY` trong `.env` — lớp 3 luôn
+   rơi vào "review" (đúng thiết kế, nhưng nghĩa là mọi T2/T3 hiện đều cần người duyệt
+   thủ công, không có term nào tự động qua được lớp 3 để test "generic → pass" thật).
+   Cấu hình `ANTHROPIC_API_KEY` trong `.env` để dùng được đầy đủ.
