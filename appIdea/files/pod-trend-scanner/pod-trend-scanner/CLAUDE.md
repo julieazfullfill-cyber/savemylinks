@@ -50,6 +50,7 @@ src/scanner/
     bing_suggest.py
     pinterest_suggest.py
     pinterest_trends.py
+    google_trending_now.py  # "Trending Now" — per_seed=False, không gắn niche, xem docs/SOURCES.md
   core/
     config.py        # pydantic-settings, đọc từ env
     db.py            # engine, session
@@ -147,6 +148,7 @@ uv run alembic upgrade head
 uv run scanner seed --file data/seed_keywords.json
 uv run scanner seed-occasions --file data/occasions.json
 uv run scanner collect --source google_suggest
+uv run scanner collect --source google_trending_now   # per_seed=False, phát hiện chủ đề mới ngoài seed list
 uv run scanner metrics
 uv run scanner enrich          # top term theo accel -> term_enrichment (top-100/lượt)
 uv run scanner score           # momentum + opportunity -> candidates

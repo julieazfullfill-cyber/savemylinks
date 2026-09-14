@@ -177,12 +177,60 @@ Không tầng nào cho dữ liệu shop đối thủ.
 Nên: viết `scanner import-etsy --file export.csv` nhận CSV export từ tool bên thứ ba
 (eRank, Everbee, Alura). Map cột vào `term_observations` với `source.kind='import'`.
 
-### tiktok_creative_center
+### google_trending_now — chủ đề đang trend, không gắn seed nào (`per_seed=False`)
 
-- Public, không cần login, Playwright
-- Hashtag và keyword trending theo ngành và quốc gia
-- Giá trị chính là tín hiệu **thẩm mỹ**: phong cách nào đang lên (y2k, coquette, groovy)
-- Rate limit tự đặt: 1 req/2 giây, chạy 1 lần/ngày
+Endpoint bắt được THẬT (curl thuần, không cookie, 2026-09-14):
+
+```
+GET https://trends.google.com/trending?geo=US
+```
+
+API cũ mà `pytrends` bọc (`trends.google.com/trends/api/dailytrends`,
+`.../realtimetrends`) **đã bị gỡ** — xác nhận thật, cả hai trả 404. Google đổi hẳn
+sang trang mới "Trending Now", không còn REST API JSON riêng. Trang mới render
+server-side, nhúng thẳng dữ liệu vào HTML qua khối bootstrap chuẩn của Google
+(`AF_initDataCallback({key: 'ds:0', ..., data: [...]})`, giống Gmail/Maps) — không
+cần cookie, không cần JS thật thực thi, chỉ regex + `json.loads` khối `data`.
+
+Xác nhận thật lúc test: **653 chủ đề cho `geo=US`**. Mỗi phần tử là mảng cố định —
+`[0]` term chính, `[2]` geo, `[6]` ước lượng search volume (bậc thang, vd 2000000),
+`[9]` mảng cụm liên quan (breakdown queries, tới 100+/chủ đề). Thứ tự phần tử trong
+mảng chính là rank thật (mục đầu là chủ đề hot nhất).
+
+Dùng `per_seed=False` (framework đã có sẵn cơ chế này từ Phase 1, ban đầu định hình
+cho pinterest_trends nhưng adapter đó cuối cùng theo seed — đây là nguồn đầu tiên thật
+sự dùng nhánh này). Chỉ lưu top N (`max_terms_per_run`, mặc định 150) theo rank làm
+observation chính; KHÔNG tách 100+ cụm liên quan/chủ đề thành observation riêng (sẽ
+ngập bảng `terms` với phần lớn noise thể thao/thời sự không liên quan POD) — chỉ giữ
+5 cụm đầu trong `meta` để tham khảo.
+
+Term thu được KHÔNG gắn niche nào (đúng thiết kế sẵn có: `determine_risk_tier` coi
+term không gắn seed là T2, bắt buộc đủ 4 lớp + người duyệt). Phần lớn nội dung là tin
+thời sự/thể thao/người nổi tiếng — đúng loại Lớp 1 blocklist + Lớp 3 LLM origin
+classification được thiết kế để bắt, không tắt bớt lọc cho nguồn này. Chi tiết:
+`adapters/google_trending_now.py`.
+
+### tiktok_creative_center — KHÔNG làm được, bot-detection thật
+
+Đã thử thật (2026-09-14), không phải đoán:
+
+- Trang `ads.tiktok.com/business/creativecenter/...` redirect (301) sang
+  `ads.tiktok.com/creative/creativeCenter/trends`.
+- **Playwright headless (Chromium thật) bị chặn 403** ngay ở lượt tải trang đầu tiên —
+  bot-detection phía TikTok, không phải lỗi code.
+- `curl` thường (không phải browser) tải được trang (200) nhưng nội dung chỉ là shell
+  React rỗng (`__MODERN_SSR_DATA__` không có dữ liệu trend, chỉ có i18n config) — dữ
+  liệu thật fetch phía client bằng JS sau khi trang tải.
+- API nội bộ đoán được đúng
+  (`ads.tiktok.com/creative_radar_api/v1/popular_trend/hashtag/list`) trả JSON lỗi
+  `{"code":40101,"msg":"no permission"}` — cần token chống-bot TikTok tự sinh bằng JS
+  phía client (kiểu `msToken`/`ttwid`, không phải OAuth thường), và trang không hề
+  set cookie nào server-side để dùng làm điểm khởi đầu.
+
+Đây là bot-detection thật, không cố vượt qua bằng kỹ thuật giả lập fingerprint trình
+duyệt (ngoài phạm vi hợp lý). Nếu sau này thật sự cần nguồn này: cách khả thi duy nhất
+là giống `pinterest_suggest` — người vận hành tự đăng nhập trình duyệt thật, tự lấy
+token/cookie từ devtools, dán thủ công vào `.env`, refresh định kỳ.
 
 ---
 
@@ -196,7 +244,7 @@ Nên: viết `scanner import-etsy --file export.csv` nhận CSV export từ tool
 | TikTok Research API | Chỉ cấp cho nghiên cứu học thuật. |
 | Instagram Graph | Chỉ truy cập được tài khoản của chính mình. |
 | X / Twitter API | Chi phí không tương xứng giá trị. |
-| pytrends | Free nhưng 429 liên tục, không chịu nổi cron hằng ngày. Nếu cần Google Trends thì mua SerpApi hoặc DataForSEO ở Phase 2+. |
+| pytrends | Bọc API cũ (`dailytrends`/`realtimetrends`) — **đã bị Google gỡ hẳn** (xác nhận thật 2026-09-14, cả hai trả 404), không còn dùng được nữa dù có 429 hay không. Dùng `google_trending_now` (trang "Trending Now" mới) thay thế — miễn phí, không cần key. |
 
 ---
 
