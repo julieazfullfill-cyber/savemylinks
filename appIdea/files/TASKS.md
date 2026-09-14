@@ -54,11 +54,11 @@ Mục tiêu: có velocity thật. Đây là phase quan trọng nhất, đừng r
 
 Mục tiêu: biết term nào đáng làm, và biết làm vào lúc nào.
 
-- [ ] `pipeline/enrich.py` — đếm số listing cạnh tranh cho top 100 term/ngày → `saturation_score`
-- [ ] Calendar engine: bảng `occasions` (dịp, peak_months, lead_weeks), join với seed
-- [ ] Two-axis scoring: `momentum` và `opportunity`, lưu cả hai, không gộp thành một số
-- [ ] Etsy CSV importer (`scanner import-etsy --file x.csv`) — KHÔNG scraper
-- [ ] Dashboard: scatter plot 4 góc phần tư, filter theo niche và risk_tier
+- [x] `pipeline/enrich.py` — đếm số listing cạnh tranh cho top 100 term/ngày → `saturation_score`
+- [x] Calendar engine: bảng `occasions` (dịp, peak_months, lead_weeks), join với seed
+- [x] Two-axis scoring: `momentum` và `opportunity`, lưu cả hai, không gộp thành một số
+- [x] Etsy CSV importer (`scanner import-etsy --file x.csv`) — KHÔNG scraper
+- [x] Dashboard: scatter plot 4 góc phần tư, filter theo niche và risk_tier
 
 **Acceptance**
 - Calendar engine trả đúng: hỏi "hôm nay nên sản xuất gì cho mùa cưới" vào tháng 12 thì

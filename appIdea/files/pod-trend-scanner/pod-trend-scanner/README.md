@@ -309,3 +309,84 @@ gì để backfill. `pinterest_trends.py` chưa tồn tại.
 - Bỏ qua pinterest_trends ở Phase 1, quay lại sau. `run_collect_all_sources` trong
   scheduler tự động chạy thêm nguồn này khi được thêm vào `REGISTRY`, không cần sửa
   `scheduler.py`.
+
+## Phase 2 — trạng thái
+
+**Hoàn tất — code xong + verify trên DB thật, không cần dữ liệu đa-ngày (dùng
+integration test mô phỏng đúng kịch bản nhiều ngày cho phần cần lịch sử).**
+
+| Hạng mục | Trạng thái |
+|---|---|
+| `pipeline/enrich.py` — competing_listings + saturation_score | xong, nguồn `amazon.com/s?k=` thật (không phải API) |
+| Calendar engine — `core/occasions.py` + `pipeline/calendar.py` | xong, khớp đúng ví dụ acceptance |
+| Two-axis scoring — `pipeline/score.py` | xong, momentum/opportunity lưu riêng |
+| Etsy CSV importer — `pipeline/import_etsy.py` | xong, **chưa verify với file thật** — xem ghi chú bên dưới |
+| Dashboard `/candidates` — scatter momentum×opportunity | xong, filter niche + risk_tier |
+| `scheduler.py` | thêm job enrich (03:30 UTC), score (03:45 UTC) |
+| Test | 169 passed (offline + Postgres thật) |
+| `mypy` strict | sạch, 29 file |
+
+### Quyết định spec chưa rõ, tự chọn (đã nói trước khi code)
+
+**Cửa sổ "nên sản xuất":** acceptance ví dụ "hỏi tháng 12 ra occasion peak tháng 5-8,
+lead 8-12 tuần" không khớp nếu hiểu "trước peak N tuần" là một mốc duy nhất (tháng 12
+cách peak tháng 5 tới 5 tháng, không phải 8-12 tuần). Định nghĩa cửa sổ =
+`[peak_start - 2×lead_weeks, peak_start - lead_weeks]` (mở sớm gấp đôi lead time, đóng
+đúng lead time) — với lead_weeks=10, khớp chính xác ví dụ (tháng 12 nằm trong
+[12/12, 20/2]). Xem docstring `pipeline/calendar.py`.
+
+**`commercial_signal`:** không gọi thêm nguồn nào — suy từ việc term có từng xuất hiện
+trong observation của `amazon_suggest` chưa (dữ liệu đã có sẵn trong DB).
+
+**`saturation_score`:** log-scale trên `competing_listings`, mốc bão hoà hoàn toàn đặt
+ở 50,000 listing. DATA_MODEL.md chỉ nói "0-1, càng cao càng bão hoà", không cho công
+thức cụ thể — công thức nằm trong `pipeline/enrich.py`, tính lại được từ
+`competing_listings` nếu đổi.
+
+**`norm()`/`recency()` trong momentum:** cũng không có công thức cụ thể trong
+DATA_MODEL.md. `norm(accel)` dùng sigmoid quanh 0 (không cần biết trước biên accel
+thực tế, ổn định dù chạy trên tập term khác nhau). `recency(first_seen_at)` suy giảm
+nửa chu kỳ 30 ngày. Xem docstring `pipeline/score.py`.
+
+### Acceptance đã verify
+
+**Calendar engine (khớp đúng ví dụ trong TASKS.md):**
+```
+scanner seed-occasions --file data/occasions.json
+  -> {"parsed": 10, "inserted": 10, "updated": 0, "total": 10}
+scanner calendar --niche wedding --date 2026-12-15
+  -> occasion=wedding_season_us, peak_months=[5,6,7,8], lead_weeks=10,
+     window=[2026-12-12, 2027-02-20] — chứa 2026-12-15, đúng seed niche wedding
+```
+
+**Term bão hoà cao bị đẩy xuống opportunity thấp dù momentum cao:** verify bằng
+integration test `test_score_db.py` — 2 term CÙNG accel/n_sources/first_seen_at (nên
+CÙNG momentum), một term saturation_score=0.95 → opportunity=0.43, term kia
+saturation_score=0.05 → opportunity=0.97. Cùng momentum, opportunity chênh hẳn.
+
+**Enrich không vượt quá 100 lookup/ngày:** `enrich_top_terms(top_n=100)` mặc định,
+verify bằng test giới hạn `top_n` cứng + cache 7 ngày (không check lại term vừa check).
+Chạy thật: `scanner enrich --top-n 5` trên 5 seed thật (bridesmaid proposal box,
+maid of honor proposal gifts, …) — 5/5 thành công, `competing_listings` thật từ 793 đến
+2000, `saturation_score` tính đúng, `commercial_signal=true` cho cả 5 (đều có trong
+amazon_suggest).
+
+**Etsy CSV importer chạy thật (nhưng chưa đối chiếu format thật):** `scanner
+import-etsy --file tests/fixtures/etsy_erank_style.csv` trên Postgres thật — parse
+đúng, ghi `raw_items`/`term_observations` đúng, dedupe theo ngày đúng. **Fixture CSV là
+dữ liệu TỰ DỰNG** mô phỏng tên cột phổ biến của eRank/Everbee/Alura — cả ba tool này
+cần tài khoản trả phí gắn với shop Etsy thật để xuất file, không có cách nào lấy mẫu
+thật trong phiên build này. Importer tự nhận diện cột theo alias (không hardcode một
+schema cố định — tránh đoán mò), cho ép cột bằng `--term-column`/`--value-column`.
+**Cần đối chiếu lại cách nhận diện cột này với file export thật đầu tiên** trước khi
+tin tưởng hoàn toàn — nếu bạn có file mẫu, gửi lại (bỏ số liệu nhạy cảm nếu cần) để tôi
+verify.
+
+### Dashboard `/candidates`
+
+Scatter SVG render server-side (không JS, không CDN — đúng "trang HTML thô"), 4 góc
+phần tư momentum×opportunity, filter niche + risk_tier qua form GET thường. risk_tier
+suy từ seed đã sinh ra observation của term (candidate không tự có risk_tier — term có
+thể không gắn seed nào, ví dụ tới từ pinterest_trends/etsy_csv_import, thì để trống,
+không đoán). Chạy thật qua `uvicorn`, `curl http://127.0.0.1:8010/candidates` render
+đúng.

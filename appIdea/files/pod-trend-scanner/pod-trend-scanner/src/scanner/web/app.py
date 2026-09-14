@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scanner.core.db import get_sessionmaker
-from scanner.core.models import Term, TermMetricsDaily
+from scanner.core.models import Candidate, Seed, Term, TermMetricsDaily, TermObservation
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -63,4 +63,74 @@ async def top_terms_page(
         )
     return templates.TemplateResponse(
         request, "top_terms.html", {"rows": rows, "date": target_date, "limit": limit}
+    )
+
+
+async def distinct_niches(session: AsyncSession) -> list[str]:
+    rows = (
+        await session.execute(select(Term.niche).where(Term.niche.is_not(None)).distinct())
+    ).scalars()
+    return sorted(n for n in rows if n)
+
+
+async def candidates_for_scatter(
+    session: AsyncSession, niche: str | None, risk_tier: str | None
+) -> list[dict[str, Any]]:
+    """momentum/opportunity cho scatter — chỉ candidate đã có cả hai trục (opportunity
+    NULL nghĩa là chưa qua enrich, chưa vẽ được điểm cho nó).
+
+    risk_tier suy ra từ seed đã sinh ra observation của term đó (MAX theo chuỗi 'T0'..
+    'T3' — so sánh string đúng thứ tự vì cùng độ dài, cùng tiền tố). Term không gắn
+    seed nào (ví dụ pinterest_trends, etsy_csv_import) thì risk_tier là NULL — không
+    suy đoán, không mặc định về T0.
+    """
+    risk_subq = (
+        select(TermObservation.term_id, func.max(Seed.risk_tier).label("risk_tier"))
+        .join(Seed, Seed.id == TermObservation.seed_id)
+        .group_by(TermObservation.term_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            Candidate.id,
+            Candidate.momentum,
+            Candidate.opportunity,
+            Candidate.status,
+            Term.text_display,
+            Term.niche,
+            risk_subq.c.risk_tier,
+        )
+        .join(Term, Term.id == Candidate.term_id)
+        .outerjoin(risk_subq, risk_subq.c.term_id == Term.id)
+        .where(Candidate.momentum.is_not(None), Candidate.opportunity.is_not(None))
+    )
+    if niche:
+        stmt = stmt.where(Term.niche == niche)
+    if risk_tier:
+        stmt = stmt.where(risk_subq.c.risk_tier == risk_tier)
+    stmt = stmt.order_by(Candidate.momentum.desc())
+    rows = (await session.execute(stmt)).all()
+    return [dict(row._mapping) for row in rows]
+
+
+@app.get("/candidates", response_class=HTMLResponse)
+async def candidates_page(
+    request: Request,
+    niche: str | None = Query(None),
+    risk_tier: str | None = Query(None),
+) -> HTMLResponse:
+    """Scatter plot momentum (x) / opportunity (y), 4 góc phần tư, filter niche + risk_tier."""
+    async with get_sessionmaker()() as session:
+        niches = await distinct_niches(session)
+        rows = await candidates_for_scatter(session, niche, risk_tier)
+    return templates.TemplateResponse(
+        request,
+        "candidates.html",
+        {
+            "rows": rows,
+            "niches": niches,
+            "risk_tiers": ["T0", "T1", "T2", "T3"],
+            "selected_niche": niche,
+            "selected_risk_tier": risk_tier,
+        },
     )

@@ -141,6 +141,25 @@ chỉ cần lúc **dò tìm** endpoint mới. Vẫn giữ Playwright là optiona
 
 ## Phase 2: nguồn bổ sung
 
+### amazon_search_count — đếm listing cạnh tranh cho `pipeline/enrich.py`
+
+- `GET https://www.amazon.com/s?k=<term>` — trang search HTML công khai, không key,
+  không auth. Xác nhận thật (2026-09-14): không dính CAPTCHA/anti-bot với UA trình
+  duyệt thật thông thường, khác hẳn Pinterest.
+- Đọc số "results for" trong `<h2 class="...a-text-normal">`, 3 dạng response thật:
+  - `"No results for your search query."` -> 0
+  - `"27 results for"` -> đếm chính xác (số nhỏ)
+  - `"1-48 of over 3,000 results for"` -> đếm gần đúng, Amazon tự làm tròn (số lớn)
+- Parse bằng regex trên HTML thô (không dùng parser mới, tránh xin thêm dependency —
+  pattern hẹp và ổn định qua nhiều lần thử thật). Xem `pipeline/enrich.py` và fixture
+  `tests/fixtures/amazon_search_*.html`.
+- Rate limit tự đặt: 1 req/giây, giống `amazon_suggest` (chưa có số liệu chính thức
+  riêng cho trang search, tự đặt an toàn).
+- Cache 7 ngày trong `term_enrichment.checked_at` — không check lại term vừa check
+  gần đây, tiết kiệm ngân sách "top 100 term/ngày" (acceptance Phase 2).
+- Chỉ dùng cho `competing_listings`/`saturation_score`. `commercial_signal` KHÔNG gọi
+  nguồn này — suy ra từ observation `amazon_suggest` đã có sẵn trong DB.
+
 ### amazon_movers — HTML công khai
 
 - Trang Movers & Shakers và New Releases theo category, cập nhật theo giờ

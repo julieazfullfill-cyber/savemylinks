@@ -13,24 +13,37 @@ from scanner.adapters import REGISTRY
 from scanner.pipeline.collect import CollectStats
 
 
-def test_build_scheduler_registers_collect_and_metrics_jobs() -> None:
+def test_build_scheduler_registers_all_pipeline_jobs() -> None:
     sched = scheduler_module.build_scheduler()
     jobs = {job.id: job for job in sched.get_jobs()}
 
-    assert set(jobs) == {"collect_daily", "metrics_daily"}
-
-    collect_trigger = jobs["collect_daily"].trigger
-    metrics_trigger = jobs["metrics_daily"].trigger
-    assert isinstance(collect_trigger, CronTrigger)
-    assert isinstance(metrics_trigger, CronTrigger)
+    assert set(jobs) == {"collect_daily", "metrics_daily", "enrich_daily", "score_daily"}
+    assert all(isinstance(job.trigger, CronTrigger) for job in jobs.values())
+    assert all(str(job.trigger.timezone) == "UTC" for job in jobs.values())
 
     def field_value(trigger: CronTrigger, name: str) -> str:
         return str(next(f for f in trigger.fields if f.name == name))
 
-    assert field_value(collect_trigger, "hour") == str(scheduler_module.COLLECT_HOUR_UTC)
-    assert field_value(metrics_trigger, "hour") == str(scheduler_module.METRICS_HOUR_UTC)
-    assert str(collect_trigger.timezone) == "UTC"
-    assert str(metrics_trigger.timezone) == "UTC"
+    assert field_value(jobs["collect_daily"].trigger, "hour") == str(
+        scheduler_module.COLLECT_HOUR_UTC
+    )
+    assert field_value(jobs["metrics_daily"].trigger, "hour") == str(
+        scheduler_module.METRICS_HOUR_UTC
+    )
+    assert field_value(jobs["enrich_daily"].trigger, "hour") == str(
+        scheduler_module.ENRICH_HOUR_UTC
+    )
+    assert field_value(jobs["score_daily"].trigger, "hour") == str(scheduler_module.SCORE_HOUR_UTC)
+
+    # Thứ tự trong ngày: collect < metrics < enrich < score, đúng pipeline diagram.
+    hours = [
+        (
+            int(field_value(jobs[job_id].trigger, "hour")),
+            int(field_value(jobs[job_id].trigger, "minute")),
+        )
+        for job_id in ("collect_daily", "metrics_daily", "enrich_daily", "score_daily")
+    ]
+    assert hours == sorted(hours)
 
 
 async def test_collect_all_sources_continues_when_one_source_raises(
@@ -68,3 +81,35 @@ async def test_daily_metrics_failure_is_caught_and_logged(
 
     # Không được raise ra ngoài — scheduler phải sống sót qua job lỗi.
     await scheduler_module.run_daily_metrics()
+
+
+async def test_daily_enrich_failure_is_caught_and_logged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("network down")
+
+    @asynccontextmanager
+    async def fake_session_scope() -> AsyncIterator[None]:
+        yield None
+
+    monkeypatch.setattr(scheduler_module, "session_scope", fake_session_scope)
+    monkeypatch.setattr(scheduler_module, "enrich_top_terms", boom)
+
+    await scheduler_module.run_daily_enrich()  # không được raise ra ngoài
+
+
+async def test_daily_score_failure_is_caught_and_logged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("bad data")
+
+    @asynccontextmanager
+    async def fake_session_scope() -> AsyncIterator[None]:
+        yield None
+
+    monkeypatch.setattr(scheduler_module, "session_scope", fake_session_scope)
+    monkeypatch.setattr(scheduler_module, "score_candidates", boom)
+
+    await scheduler_module.run_daily_score()  # không được raise ra ngoài

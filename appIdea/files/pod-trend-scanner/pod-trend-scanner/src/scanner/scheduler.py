@@ -1,8 +1,12 @@
-"""APScheduler: collect 02:00 UTC, metrics 03:00 UTC.
+"""APScheduler: collect 02:00 UTC -> metrics 03:00 UTC -> enrich 03:30 UTC ->
+score 03:45 UTC. Đúng thứ tự pipeline trong CLAUDE.md
+(collect → extract → metrics → enrich → risk → brief → dashboard duyệt → export) —
+risk/brief là Phase 3/4, chưa có job ở đây.
 
-Chạy: `scanner schedule`. Đây là một trong sáu tiến trình độc lập của hệ thống —
-giao tiếp qua Postgres, không gọi trực tiếp dashboard hay pipeline khác. Một job lỗi
-được log và bỏ qua, không làm crash tiến trình scheduler.
+Chạy: `scanner schedule`. Mỗi bước là một tiến trình độc lập — giao tiếp qua Postgres,
+không gọi trực tiếp dashboard hay bước khác. Một job lỗi được log và bỏ qua, không làm
+crash tiến trình scheduler hay chặn job sau (metrics vẫn chạy dù collect lỗi, đọc dữ
+liệu đã có từ hôm trước).
 
 Giờ chạy chốt là UTC (nhất quán với toàn bộ timestamp trong hệ thống), không phải
 giờ server — xem ghi chú trong README.
@@ -18,12 +22,16 @@ from scanner.adapters import REGISTRY
 from scanner.core.db import dispose_engine, session_scope
 from scanner.core.log import get_logger
 from scanner.pipeline.collect import collect_source
+from scanner.pipeline.enrich import enrich_top_terms
 from scanner.pipeline.metrics import run_metrics
+from scanner.pipeline.score import score_candidates
 
 log = get_logger(__name__)
 
 COLLECT_HOUR_UTC = 2
 METRICS_HOUR_UTC = 3
+ENRICH_HOUR_UTC, ENRICH_MINUTE_UTC = 3, 30
+SCORE_HOUR_UTC, SCORE_MINUTE_UTC = 3, 45
 # Job trễ tối đa 1 giờ so với giờ chốt vẫn được chạy (máy ngủ, restart, v.v.).
 MISFIRE_GRACE_SECONDS = 3600
 
@@ -47,6 +55,24 @@ async def run_daily_metrics() -> None:
         log.error("scheduler.metrics_failed", error=str(exc))
 
 
+async def run_daily_enrich() -> None:
+    try:
+        async with session_scope() as session:
+            stats = await enrich_top_terms(session)
+        log.info("scheduler.enrich_done", **stats.as_dict())
+    except Exception as exc:  # noqa: BLE001 - enrich lỗi không được làm crash scheduler
+        log.error("scheduler.enrich_failed", error=str(exc))
+
+
+async def run_daily_score() -> None:
+    try:
+        async with session_scope() as session:
+            stats = await score_candidates(session)
+        log.info("scheduler.score_done", **stats.as_dict())
+    except Exception as exc:  # noqa: BLE001 - score lỗi không được làm crash scheduler
+        log.error("scheduler.score_failed", error=str(exc))
+
+
 def build_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="UTC")
     scheduler.add_job(
@@ -61,6 +87,18 @@ def build_scheduler() -> AsyncIOScheduler:
         id="metrics_daily",
         misfire_grace_time=MISFIRE_GRACE_SECONDS,
     )
+    scheduler.add_job(
+        run_daily_enrich,
+        CronTrigger(hour=ENRICH_HOUR_UTC, minute=ENRICH_MINUTE_UTC, timezone="UTC"),
+        id="enrich_daily",
+        misfire_grace_time=MISFIRE_GRACE_SECONDS,
+    )
+    scheduler.add_job(
+        run_daily_score,
+        CronTrigger(hour=SCORE_HOUR_UTC, minute=SCORE_MINUTE_UTC, timezone="UTC"),
+        id="score_daily",
+        misfire_grace_time=MISFIRE_GRACE_SECONDS,
+    )
     return scheduler
 
 
@@ -72,6 +110,8 @@ async def run_forever() -> None:
         "scheduler.started",
         collect_hour_utc=COLLECT_HOUR_UTC,
         metrics_hour_utc=METRICS_HOUR_UTC,
+        enrich_hour_utc=ENRICH_HOUR_UTC,
+        score_hour_utc=SCORE_HOUR_UTC,
     )
 
     stop_event = asyncio.Event()

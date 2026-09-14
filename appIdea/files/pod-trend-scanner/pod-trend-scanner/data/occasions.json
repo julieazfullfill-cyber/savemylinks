@@ -1,0 +1,81 @@
+{
+  "version": "1.0",
+  "generated_for": "POD trend scanner - calendar engine seed data",
+  "field_notes": {
+    "peak_months": "1-12, tháng cao điểm MUA/dùng sản phẩm (không phải tháng sản xuất).",
+    "lead_weeks": "Số tuần sản xuất phải xong TRƯỚC khi bắt đầu peak_months (tháng nhỏ nhất trong peak_months). Cửa sổ 'nên sản xuất ngay' là [peak_start - 2*lead_weeks, peak_start - lead_weeks] — mở sớm gấp đôi lead time để có thời gian chuẩn bị, đóng đúng lúc lead time, xem pipeline/calendar.py.",
+    "niches": "Khớp với niche trong data/seed_keywords.json (core: wedding, birthday, custom_photo; mở rộng: occupation_humor, hobby_humor, general_humor, pop_culture, political_civic)."
+  },
+  "occasions": [
+    {
+      "name": "engagement_season",
+      "peak_months": [1, 2, 3, 4],
+      "lead_weeks": 8,
+      "niches": ["wedding"],
+      "note": "Cầu hôn tập trung sau lễ hội cuối năm -> bridesmaid proposal box, save-the-date tăng Jan-Apr."
+    },
+    {
+      "name": "wedding_season_us",
+      "peak_months": [5, 6, 7, 8],
+      "lead_weeks": 10,
+      "niches": ["wedding"],
+      "note": "Mùa cưới thực tế ở Mỹ. Welcome sign, guest book, favor -> khách mua sát ngày cưới hơn proposal box."
+    },
+    {
+      "name": "valentines_day",
+      "peak_months": [2],
+      "lead_weeks": 6,
+      "niches": ["wedding", "custom_photo", "general_humor"],
+      "note": null
+    },
+    {
+      "name": "mothers_day_us",
+      "peak_months": [5],
+      "lead_weeks": 8,
+      "niches": ["custom_photo", "birthday"],
+      "note": null
+    },
+    {
+      "name": "fathers_day_us",
+      "peak_months": [6],
+      "lead_weeks": 8,
+      "niches": ["custom_photo", "birthday", "occupation_humor"],
+      "note": null
+    },
+    {
+      "name": "graduation_season",
+      "peak_months": [5, 6],
+      "lead_weeks": 8,
+      "niches": ["custom_photo", "birthday"],
+      "note": null
+    },
+    {
+      "name": "back_to_school",
+      "peak_months": [8, 9],
+      "lead_weeks": 6,
+      "niches": ["birthday", "general_humor"],
+      "note": null
+    },
+    {
+      "name": "halloween",
+      "peak_months": [10],
+      "lead_weeks": 8,
+      "niches": ["general_humor", "pop_culture"],
+      "note": null
+    },
+    {
+      "name": "holiday_christmas",
+      "peak_months": [12],
+      "lead_weeks": 10,
+      "niches": ["custom_photo", "birthday", "wedding"],
+      "note": "Quà tặng cuối năm — photo blanket, custom mug, family portrait bán mạnh."
+    },
+    {
+      "name": "new_year",
+      "peak_months": [1],
+      "lead_weeks": 6,
+      "niches": ["general_humor"],
+      "note": null
+    }
+  ]
+}

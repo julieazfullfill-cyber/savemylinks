@@ -56,24 +56,29 @@ src/scanner/
     log.py           # cấu hình structlog JSON
     models.py        # SQLAlchemy models
     normalize.py     # chuẩn hoá + dedupe term
+    occasions.py     # parse data/occasions.json + sync bảng occasions
     ratelimit.py     # token bucket theo source
     seeds.py         # parse data/seed_keywords.json + sync bảng seeds
   pipeline/
+    calendar.py      # occasions + seeds -> nên sản xuất gì hôm nay
     collect.py
     extract.py
     metrics.py
-    enrich.py
+    enrich.py         # competing_listings + saturation_score -> term_enrichment
+    import_etsy.py    # CSV importer (KHÔNG scraper) -> source.kind='import'
+    score.py          # momentum + opportunity (2 trục riêng) -> candidates
     risk.py
     brief.py         # LLM sinh design_brief
     render.py        # brief -> image prompt (code thuần, KHÔNG dùng LLM)
   web/
     app.py
     templates/
-  scheduler.py       # APScheduler: collect 02:00 UTC, metrics 03:00 UTC
-  cli.py             # typer: scanner collect / metrics / risk / brief
+  scheduler.py       # APScheduler: collect 02:00 -> metrics 03:00 -> enrich 03:30 -> score 03:45 UTC
+  cli.py             # typer: scanner collect / metrics / enrich / score / calendar / import-etsy / risk / brief
 tests/
 migrations/
 data/seed_keywords.json
+data/occasions.json
 docs/
 ```
 
@@ -132,9 +137,14 @@ uv sync
 docker compose up -d postgres
 uv run alembic upgrade head
 uv run scanner seed --file data/seed_keywords.json
+uv run scanner seed-occasions --file data/occasions.json
 uv run scanner collect --source google_suggest
 uv run scanner metrics
-uv run uvicorn scanner.web.app:app --reload
+uv run scanner enrich          # top term theo accel -> term_enrichment (top-100/lượt)
+uv run scanner score           # momentum + opportunity -> candidates
+uv run scanner calendar --niche wedding   # seed nào nên sản xuất hôm nay
+uv run scanner import-etsy --file export.csv   # CSV từ eRank/Everbee/Alura, KHÔNG scraper
+uv run uvicorn scanner.web.app:app --reload   # / top term, /candidates scatter momentum×opportunity
 ```
 
 ## Định nghĩa "xong" cho mọi task

@@ -18,6 +18,7 @@ TABLES = (
     "terms",
     "seeds",
     "sources",
+    "occasions",
 )
 
 

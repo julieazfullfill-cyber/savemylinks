@@ -13,9 +13,15 @@ from scanner.adapters import REGISTRY
 from scanner.core.config import get_settings
 from scanner.core.db import dispose_engine, session_scope
 from scanner.core.log import configure_logging, get_logger
+from scanner.core.occasions import parse_occasion_file, sync_occasions
 from scanner.core.seeds import CORE_NICHES, parse_seed_file, sync_seeds
+from scanner.pipeline.calendar import production_calendar
 from scanner.pipeline.collect import collect_source
+from scanner.pipeline.enrich import DEFAULT_TOP_N, enrich_top_terms
+from scanner.pipeline.import_etsy import import_etsy_csv
 from scanner.pipeline.metrics import recompute_history, run_metrics
+from scanner.pipeline.score import DEFAULT_TOP_N as SCORE_DEFAULT_TOP_N
+from scanner.pipeline.score import score_candidates
 
 # Console Windows mặc định là cp1252, help và log tiếng Việt sẽ vỡ nếu không ép UTF-8.
 for _stream in (sys.stdout, sys.stderr):
@@ -26,6 +32,7 @@ app = typer.Typer(no_args_is_help=True, add_completion=False, help="POD Trend Sc
 log = get_logger(__name__)
 
 DEFAULT_SEED_FILE = Path("data/seed_keywords.json")
+DEFAULT_OCCASIONS_FILE = Path("data/occasions.json")
 
 
 def _setup() -> None:
@@ -55,6 +62,62 @@ def seed(
             ensure_ascii=False,
         )
     )
+
+
+@app.command("seed-occasions")
+def seed_occasions(
+    file: Annotated[
+        Path, typer.Option("--file", help="đường dẫn occasions.json")
+    ] = DEFAULT_OCCASIONS_FILE,
+) -> None:
+    """Nạp dịp lễ/mùa vụ từ JSON vào bảng `occasions` (idempotent)."""
+    _setup()
+    rows = parse_occasion_file(file)
+
+    async def run() -> dict[str, int]:
+        try:
+            async with session_scope() as session:
+                return await sync_occasions(session, rows)
+        finally:
+            await dispose_engine()
+
+    stats = asyncio.run(run())
+    typer.echo(json.dumps({"parsed": len(rows), **stats}, ensure_ascii=False))
+
+
+@app.command()
+def calendar(
+    niche: Annotated[str | None, typer.Option("--niche", help="lọc theo niche")] = None,
+    for_date: Annotated[
+        str | None, typer.Option("--date", help="YYYY-MM-DD, mặc định hôm nay")
+    ] = None,
+) -> None:
+    """Hôm nay (hoặc --date) nên sản xuất seed nào, cho dịp nào."""
+    _setup()
+    target = date_t.fromisoformat(for_date) if for_date else None
+
+    async def run() -> list[dict[str, object]]:
+        try:
+            async with session_scope() as session:
+                items = await production_calendar(session, niche=niche, today=target)
+                return [
+                    {
+                        "occasion": it.occasion,
+                        "seed": it.seed,
+                        "niche": it.niche,
+                        "sub_niche": it.sub_niche,
+                        "risk_tier": it.risk_tier,
+                        "peak_months": list(it.peak_months),
+                        "lead_weeks": it.lead_weeks,
+                        "window_start": it.window_start.isoformat(),
+                        "window_end": it.window_end.isoformat(),
+                    }
+                    for it in items
+                ]
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False, indent=2))
 
 
 @app.command()
@@ -113,6 +176,75 @@ def metrics(
                     results = await recompute_history(session)
                     return [r.as_dict() for r in results]
                 stats = await run_metrics(session, target)
+                return stats.as_dict()
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command()
+def enrich(
+    top_n: Annotated[
+        int, typer.Option("--top-n", help="số term tối đa mỗi lượt")
+    ] = DEFAULT_TOP_N,
+    cache_days: Annotated[
+        int, typer.Option("--cache-days", help="bỏ qua term đã check trong N ngày")
+    ] = 7,
+) -> None:
+    """Đếm listing cạnh tranh cho top term theo accel, ghi term_enrichment."""
+    _setup()
+
+    async def run() -> dict[str, int]:
+        try:
+            async with session_scope() as session:
+                stats = await enrich_top_terms(session, top_n=top_n, cache_days=cache_days)
+                return stats.as_dict()
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command()
+def score(
+    top_n: Annotated[
+        int, typer.Option("--top-n", help="số term tối đa mỗi lượt")
+    ] = SCORE_DEFAULT_TOP_N,
+) -> None:
+    """Tính momentum/opportunity cho term đạt điều kiện vào hàng đợi, ghi candidates."""
+    _setup()
+
+    async def run() -> dict[str, int]:
+        try:
+            async with session_scope() as session:
+                stats = await score_candidates(session, top_n=top_n)
+                return stats.as_dict()
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command("import-etsy")
+def import_etsy(
+    file: Annotated[Path, typer.Option("--file", help="CSV export từ eRank/Everbee/Alura")],
+    term_column: Annotated[
+        str | None, typer.Option("--term-column", help="ép tên cột keyword nếu tự nhận diện sai")
+    ] = None,
+    value_column: Annotated[
+        str | None, typer.Option("--value-column", help="ép tên cột search volume")
+    ] = None,
+) -> None:
+    """Nạp CSV export Etsy (KHÔNG scrape) vào raw_items + term_observations."""
+    _setup()
+
+    async def run() -> dict[str, int | str | bool]:
+        try:
+            async with session_scope() as session:
+                stats = await import_etsy_csv(
+                    session, file, term_column=term_column, value_column=value_column
+                )
                 return stats.as_dict()
         finally:
             await dispose_engine()
