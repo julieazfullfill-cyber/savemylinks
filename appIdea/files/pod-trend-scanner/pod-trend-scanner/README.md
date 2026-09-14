@@ -462,17 +462,20 @@ cũ hay mới" đều phải chặn). Verify: bắt được cả câu chưa t�
    bulk data) và `api.uspto.gov` (live API) đều bắt buộc tài khoản USPTO.gov + MFA kể
    từ 2026-06-18 — xác nhận thật qua Playwright, không phải đoán, nên Lớp 2 chuyển
    sang tra **local index** dựng từ file bulk XML "Trademark Full Text XML Data" mà
-   người dùng tự tải trực tiếp từ USPTO (không cần key/tài khoản). Nạp bằng:
+   người dùng tự tải trực tiếp từ USPTO (không cần key/tài khoản). Bộ đầy đủ có
+   **91 file** (~21GB, mỗi file `.xml` hoặc `.zip`); nạp một hoặc cả thư mục cùng lúc:
    ```
-   scanner uspto-index --file path/to/apcXXXXXXXX-XXXXXXXX-N.xml
+   scanner uspto-index --path path/to/thu-muc-chua-91-file/   # quét cả .xml lẫn .zip
+   scanner uspto-index-status                                  # xem đã nạp bao nhiêu
    ```
-   Bộ dữ liệu đầy đủ ~21GB, chia nhiều file; hiện mới nạp **1 file (~395MB, 42.460
-   case-file)**, tức một phần nhỏ so với tổng số ~12-15 triệu trademark case file thật
-   sự tồn tại. Vì vậy `USPTO_INDEX_COVERAGE_COMPLETE` mặc định `false`, và thiết kế
-   fail-closed coi "không tìm thấy match trong index" là `review` (không phải `pass`)
-   cho tới khi người vận hành tự xác nhận đã nạp đủ toàn bộ dữ liệu và set biến đó
-   `true`. Muốn Lớp 2 tự động "pass" nhiều hơn (đỡ tồn đọng ở hàng chờ duyệt) thì cần
-   nạp thêm các file còn lại của bộ 21GB.
+   File đã nạp tự động bỏ qua ở lần chạy sau (idempotent theo tên file trong manifest
+   `uspto_bulk_files`) — chạy lại lệnh trên cùng thư mục khi có thêm file mới an toàn,
+   không xử lý lại từ đầu; dùng `--force` nếu cần nạp lại. Hiện mới nạp **1/91 file
+   (~395MB, 42.460 case-file)**, tức một phần nhỏ so với tổng số ~12-15 triệu trademark
+   case file thật sự tồn tại. Vì vậy `USPTO_INDEX_COVERAGE_COMPLETE` mặc định `false`,
+   và thiết kế fail-closed coi "không tìm thấy match trong index" là `review` (không
+   phải `pass`) cho tới khi người vận hành tự xác nhận đã nạp đủ 91/91 file (theo
+   `uspto-index-status`) và set biến đó `true`.
 2. **Chưa gọi được LLM thật.** Không có `ANTHROPIC_API_KEY` trong `.env` — lớp 3 luôn
    rơi vào "review" (đúng thiết kế, nhưng nghĩa là mọi T2/T3 hiện đều cần người duyệt
    thủ công, không có term nào tự động qua được lớp 3 để test "generic → pass" thật).

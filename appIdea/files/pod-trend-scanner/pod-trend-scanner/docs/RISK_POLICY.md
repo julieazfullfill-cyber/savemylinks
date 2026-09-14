@@ -36,7 +36,9 @@ mà LLM sinh ra — LLM có thể tự đưa vào một cụm dính bản quyề
   trang browse bulk data (`data.uspto.gov`) đòi tài khoản USPTO.gov + MFA kể từ
   2026-06-18 — xác nhận thật, không phải đoán. Local index nạp từ file bulk XML chính
   thức ("Trademark Full Text XML Data") tự tải không cần tài khoản, qua lệnh
-  `scanner uspto-index --file ...`.
+  `scanner uspto-index --path <thư mục hoặc file .xml/.zip>` — trỏ thẳng vào thư mục
+  chứa nhiều file để nạp hết trong một lệnh, không cần tự giải nén, file đã nạp tự
+  động bỏ qua (idempotent). `scanner uspto-index-status` xem đã nạp bao nhiêu.
 - Lọc theo class 25 (hàng may mặc); thêm class 21 và 20 nếu bán mug và đồ gỗ
 - Cache kết quả 30 ngày (dùng `risk_flags`, xem ghi chú trong `pipeline/risk.py`)
 - Trạng thái LIVE → `block`. Trạng thái DEAD → `info`, vẫn cho qua nhưng ghi log.

@@ -147,7 +147,8 @@ uv run scanner enrich          # top term theo accel -> term_enrichment (top-100
 uv run scanner score           # momentum + opportunity -> candidates
 uv run scanner calendar --niche wedding   # seed nào nên sản xuất hôm nay
 uv run scanner import-etsy --file export.csv   # CSV từ eRank/Everbee/Alura, KHÔNG scraper
-uv run scanner uspto-index --file apcXXXXXXXX-XXXXXXXX-N.xml   # nạp bulk XML USPTO -> uspto_trademarks (Lớp 2 risk)
+uv run scanner uspto-index --path data/uspto_bulk/   # nạp cả thư mục (.xml/.zip, tự bỏ qua file đã nạp) -> uspto_trademarks
+uv run scanner uspto-index-status   # số file đã nạp + breakdown LIVE/DEAD/UNKNOWN
 uv run scanner risk            # 4 lớp risk gate cho candidate mới, ghi risk_flags
 uv run scanner approve --candidate-id N --by ai_đó   # T2/T3 bắt buộc --by
 uv run uvicorn scanner.web.app:app --reload   # / top term, /candidates scatter, /review hàng đợi duyệt

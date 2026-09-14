@@ -28,7 +28,7 @@ from scanner.pipeline.risk import (
 from scanner.pipeline.metrics import recompute_history, run_metrics
 from scanner.pipeline.score import DEFAULT_TOP_N as SCORE_DEFAULT_TOP_N
 from scanner.pipeline.score import score_candidates
-from scanner.pipeline.uspto_index import load_bulk_file
+from scanner.pipeline.uspto_index import discover_bulk_paths, index_status, load_path
 
 # Console Windows mặc định là cp1252, help và log tiếng Việt sẽ vỡ nếu không ép UTF-8.
 for _stream in (sys.stdout, sys.stderr):
@@ -312,12 +312,21 @@ def approve(
 
 @app.command("uspto-index")
 def uspto_index(
-    file: Annotated[
-        list[Path], typer.Option("--file", help="1+ file XML bulk USPTO, lặp lại được")
+    path: Annotated[
+        list[Path],
+        typer.Option(
+            "--path", help="file .xml/.zip hoặc thư mục chứa nhiều file, lặp lại được"
+        ),
     ],
+    force: Annotated[
+        bool, typer.Option("--force", help="nạp lại cả file đã có trong manifest")
+    ] = False,
 ) -> None:
-    """Nạp file bulk XML USPTO ("Trademark Applications Daily") vào uspto_trademarks —
-    thay live API (docs/RISK_POLICY.md Lớp 2). Tải file từ
+    """Nạp file/thư mục bulk XML hoặc ZIP USPTO vào uspto_trademarks — thay live API
+    (docs/RISK_POLICY.md Lớp 2). Trỏ --path thẳng vào thư mục chứa nhiều file (bộ dữ
+    liệu đầy đủ có 91 file) để nạp hết trong một lệnh; không cần tự giải nén .zip;
+    file đã nạp trước đó tự động bỏ qua (dùng --force để nạp lại). Chạy lại an toàn
+    khi có thêm file mới trong cùng thư mục. Tải file từ
     https://www.uspto.gov/trademarks/apply/check-status-view-documents/trademark-bulk-data
     """
     _setup()
@@ -325,11 +334,27 @@ def uspto_index(
     async def run() -> list[dict[str, int | str]]:
         try:
             async with session_scope() as session:
-                results = []
-                for path in file:
-                    stats = await load_bulk_file(session, path)
-                    results.append(stats.as_dict())
+                results: list[dict[str, int | str]] = []
+                for p in discover_bulk_paths(path):
+                    for stats in await load_path(session, p, force=force):
+                        results.append(stats.as_dict())
                 return results
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False, indent=2))
+
+
+@app.command("uspto-index-status")
+def uspto_index_status_cmd() -> None:
+    """Tóm tắt local USPTO index: số file đã nạp, tổng record, breakdown LIVE/DEAD/
+    UNKNOWN — dùng để biết đã nạp đủ chưa trước khi set USPTO_INDEX_COVERAGE_COMPLETE."""
+    _setup()
+
+    async def run() -> dict[str, object]:
+        try:
+            async with session_scope() as session:
+                return await index_status(session)
         finally:
             await dispose_engine()
 

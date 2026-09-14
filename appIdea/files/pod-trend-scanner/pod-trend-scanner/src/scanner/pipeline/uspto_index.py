@@ -3,26 +3,36 @@
 
 Vì sao có file này: live API (api.uspto.gov) và cả trang browse bulk data
 (data.uspto.gov) đều yêu cầu tài khoản USPTO.gov + MFA kể từ 2026-06-18 (xác nhận
-thật qua Playwright, không phải đoán). Người dùng hệ thống này tự tải file bulk XML
-từ https://www.uspto.gov/trademarks/apply/check-status-view-documents/trademark-bulk-data
+thật qua Playwright, không phải đoán). Người dùng hệ thống này tự tải file bulk từ
+https://www.uspto.gov/trademarks/apply/check-status-view-documents/trademark-bulk-data
 (không cần key) rồi đưa cho lệnh này nạp vào Postgres.
 
-**Cảnh báo phạm vi dữ liệu**: bộ "Trademark Full Text XML Data (No Images) – Annual
-Applications" của USPTO gồm nhiều file, tên dạng `apc<fromdate>-<todate>-<phần>.xml`.
-Một file KHÔNG PHẢI toàn bộ dữ liệu. `run_risk_gate`/`check_uspto` (pipeline/risk.py)
-chỉ trả "pass" khi không tìm thấy match VÀ `settings.uspto_index_coverage_complete`
-là True (operator tự xác nhận đã nạp đủ toàn bộ bộ dữ liệu) — thiếu xác nhận đó,
-"không tìm thấy" vẫn rơi vào "review" (fail-closed: absence of evidence trong dữ
-liệu chưa đầy đủ không phải evidence of absence).
+**Phạm vi dữ liệu**: bộ "Trademark Full Text XML Data (No Images) – Annual
+Applications" của USPTO gồm NHIỀU file (91 file tại thời điểm viết), tên dạng
+`apc<fromdate>-<todate>-<phần>.xml` hoặc `.zip` (mỗi zip chứa 1 xml). Một file KHÔNG
+PHẢI toàn bộ dữ liệu. `check_uspto` (pipeline/risk.py) chỉ trả "pass" khi không tìm
+thấy match VÀ `settings.uspto_index_coverage_complete` là True (operator tự xác nhận
+đã nạp đủ toàn bộ bộ dữ liệu) — thiếu xác nhận đó, "không tìm thấy" vẫn rơi vào
+"review" (fail-closed: absence of evidence trong dữ liệu chưa đầy đủ không phải
+evidence of absence). Dùng `index_status()` / `scanner uspto-index-status` để biết đã
+nạp bao nhiêu file trước khi quyết định set cờ đó.
+
+**Nạp nhiều file dễ dàng**: `scanner uspto-index --path <thư mục>` tự động quét cả
+`*.xml` lẫn `*.zip` trong thư mục đó (không cần tự giải nén, không cần liệt kê từng
+file), bỏ qua file đã có trong manifest `uspto_bulk_files` (idempotent — chạy lại an
+toàn khi có thêm file mới rơi vào cùng thư mục, ví dụ USPTO ra thêm dữ liệu sau này).
+Dùng `--force` để nạp lại file đã có (nếu nghi ngờ dữ liệu gốc đã cập nhật).
 
 XML file thật có thể hàng trăm MB -> dùng iterparse, không load hết vào RAM, và xoá
 element khỏi cây ngay sau khi xử lý xong mỗi <case-file>.
 """
 
-from collections.abc import Iterator
+import zipfile
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import IO, Literal
 from xml.etree.ElementTree import Element, iterparse
 
 from sqlalchemy import text
@@ -122,10 +132,11 @@ def parse_case_file(case_file: Element) -> TrademarkRecord | None:
     )
 
 
-def iter_case_files(xml_path: str | Path) -> Iterator[TrademarkRecord]:
-    """Stream-parse: chỉ giữ 1 <case-file> trong bộ nhớ tại một thời điểm. `root.clear()`
-    sau mỗi case-file để không tích luỹ cây XML khổng lồ (file thật ~400MB+)."""
-    context = iterparse(str(xml_path), events=("end",))
+def iter_case_files(source: str | Path | IO[bytes]) -> Iterator[TrademarkRecord]:
+    """Stream-parse: chỉ giữ 1 <case-file> trong bộ nhớ tại một thời điểm. `elem.clear()`
+    sau mỗi case-file để không tích luỹ cây XML khổng lồ (file thật ~400MB+). `source`
+    có thể là đường dẫn HOẶC file-like object (vd. entry mở từ trong 1 file .zip)."""
+    context = iterparse(source, events=("end",))
     for _event, elem in context:
         if elem.tag != "case-file":
             continue
@@ -135,14 +146,49 @@ def iter_case_files(xml_path: str | Path) -> Iterator[TrademarkRecord]:
         elem.clear()
 
 
+def iter_source_files(path: Path) -> Iterator[tuple[str, str | Path | IO[bytes]]]:
+    """Với 1 file `.xml`: yield thẳng (tên file, path). Với 1 file `.zip`: giải nén
+    trong bộ nhớ, yield (tên entry, file-like) cho từng `*.xml` bên trong — USPTO phân
+    phối bulk data dạng zip, không cần bắt người dùng tự giải nén 91 file trước."""
+    if path.suffix.lower() == ".zip":
+        with zipfile.ZipFile(path) as zf:
+            names = [n for n in zf.namelist() if n.lower().endswith(".xml")]
+            for name in names:
+                with zf.open(name) as f:
+                    yield name, f
+    else:
+        yield path.name, path
+
+
+def discover_bulk_paths(inputs: Iterable[str | Path]) -> list[Path]:
+    """Mở rộng thư mục thành danh sách file `.xml`/`.zip` (sort để chạy lại có thứ tự
+    ổn định); giữ nguyên file lẻ. Cho phép `--path` trỏ thẳng vào 1 thư mục chứa toàn
+    bộ 91 file thay vì phải liệt kê từng file thủ công."""
+    found: list[Path] = []
+    for raw in inputs:
+        p = Path(raw)
+        if p.is_dir():
+            found.extend(sorted(p.glob("*.xml")))
+            found.extend(sorted(p.glob("*.zip")))
+        else:
+            found.append(p)
+    seen: set[Path] = set()
+    result: list[Path] = []
+    for p in found:
+        if p not in seen:
+            seen.add(p)
+            result.append(p)
+    return result
+
+
 @dataclass
 class LoadStats:
     filename: str
     parsed: int = 0
-    skipped: int = 0
+    status: Literal["loaded", "skipped_already_loaded"] = "loaded"
 
     def as_dict(self) -> dict[str, int | str]:
-        return {"filename": self.filename, "parsed": self.parsed, "skipped": self.skipped}
+        return {"filename": self.filename, "parsed": self.parsed, "status": self.status}
 
 
 _UPSERT_SQL = text(
@@ -182,12 +228,17 @@ _UPSERT_MANIFEST_SQL = text(
 )
 
 
-async def load_bulk_file(session: AsyncSession, xml_path: str | Path) -> LoadStats:
-    """Nạp một file XML vào `uspto_trademarks`, ghi manifest vào `uspto_bulk_files`.
-    Upsert theo serial_number -> chạy lại cùng file (vd. bản cập nhật mới hơn) an toàn,
-    không sinh trùng."""
-    path = Path(xml_path)
-    stats = LoadStats(filename=path.name)
+async def _already_loaded_filenames(session: AsyncSession) -> set[str]:
+    rows = await session.execute(text("SELECT filename FROM uspto_bulk_files"))
+    return {row[0] for row in rows}
+
+
+async def _load_entry(
+    session: AsyncSession, entry_name: str, source: str | Path | IO[bytes]
+) -> LoadStats:
+    """Nạp một XML entry (file rời hoặc mở từ trong zip) vào `uspto_trademarks`, ghi
+    1 dòng manifest. Upsert theo serial_number -> nạp lại an toàn, không sinh trùng."""
+    stats = LoadStats(filename=entry_name)
     batch: list[dict[str, object]] = []
 
     async def flush() -> None:
@@ -196,7 +247,7 @@ async def load_bulk_file(session: AsyncSession, xml_path: str | Path) -> LoadSta
         await session.execute(_UPSERT_SQL, batch)
         batch.clear()
 
-    for record in iter_case_files(path):
+    for record in iter_case_files(source):
         batch.append(
             {
                 "serial_number": record.serial_number,
@@ -210,19 +261,58 @@ async def load_bulk_file(session: AsyncSession, xml_path: str | Path) -> LoadSta
                 "registration_date": record.registration_date,
                 "us_classes": list(record.us_classes),
                 "intl_classes": list(record.intl_classes),
-                "source_file": path.name,
+                "source_file": entry_name,
             }
         )
         stats.parsed += 1
         if len(batch) >= INSERT_BATCH_SIZE:
             await flush()
             if stats.parsed % 50_000 == 0:
-                log.info("uspto_index.progress", file=path.name, parsed=stats.parsed)
+                log.info("uspto_index.progress", file=entry_name, parsed=stats.parsed)
 
     await flush()
     await session.execute(
-        _UPSERT_MANIFEST_SQL, {"filename": path.name, "record_count": stats.parsed}
+        _UPSERT_MANIFEST_SQL, {"filename": entry_name, "record_count": stats.parsed}
     )
     await session.commit()
     log.info("uspto_index.file_loaded", **stats.as_dict())
     return stats
+
+
+async def load_path(
+    session: AsyncSession, path: str | Path, *, force: bool = False
+) -> list[LoadStats]:
+    """Nạp một file `.xml`/`.zip` (thư mục cần mở rộng trước bằng `discover_bulk_paths`).
+    `.zip` có thể chứa nhiều `.xml`, mỗi entry nạp + ghi manifest riêng. Bỏ qua entry
+    đã có trong `uspto_bulk_files` trừ khi `force=True` — cho phép chạy lại lệnh trên
+    cả thư mục nhiều lần (thêm file mới, hoặc nạp nốt phần còn thiếu) mà không tốn
+    công xử lý lại file đã nạp."""
+    p = Path(path)
+    already = set() if force else await _already_loaded_filenames(session)
+    results: list[LoadStats] = []
+    for entry_name, source in iter_source_files(p):
+        if entry_name in already:
+            results.append(LoadStats(filename=entry_name, status="skipped_already_loaded"))
+            continue
+        results.append(await _load_entry(session, entry_name, source))
+    return results
+
+
+async def index_status(session: AsyncSession) -> dict[str, object]:
+    """Tóm tắt local index: số file đã nạp, tổng record, breakdown theo status_category
+    -- dùng để biết đã nạp gần đủ 91 file chưa trước khi set
+    USPTO_INDEX_COVERAGE_COMPLETE=true."""
+    files_loaded = (await session.execute(text("SELECT count(*) FROM uspto_bulk_files"))).scalar_one()
+    total_records = (
+        await session.execute(text("SELECT count(*) FROM uspto_trademarks"))
+    ).scalar_one()
+    by_status = (
+        await session.execute(
+            text("SELECT status_category, count(*) FROM uspto_trademarks GROUP BY status_category")
+        )
+    ).all()
+    return {
+        "files_loaded": int(files_loaded),
+        "total_records": int(total_records),
+        "by_status_category": {row[0]: int(row[1]) for row in by_status},
+    }
