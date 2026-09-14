@@ -1,11 +1,7 @@
-<!doctype html>
-<html lang="vi">
-<head>
-  <meta charset="utf-8">
-  <title>POD Trend Scanner — momentum / opportunity</title>
-  <style>
-    body { font-family: monospace; margin: 2rem; }
-    form { margin-bottom: 1rem; }
+{% extends "_base.html" %}
+{% block title %}POD Trend Scanner — momentum / opportunity{% endblock %}
+{% block extra_style %}
+    form.filters { margin-bottom: 1rem; }
     select { margin-right: 1rem; }
     .plot-wrap { position: relative; width: 520px; }
     svg { border: 1px solid #ccc; background: #fff; }
@@ -14,18 +10,12 @@
     .point { fill: #2563eb; stroke: #fff; stroke-width: 1; }
     .point.risk-t2, .point.risk-t3 { fill: #dc2626; }
     .point.status-approved { fill: #16a34a; }
-    table { border-collapse: collapse; margin-top: 1.5rem; width: 100%; }
-    th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: right; }
-    th, td:first-child { text-align: left; }
-    tr:nth-child(even) { background: #f5f5f5; }
-  </style>
-</head>
-<body>
+    table.cand { margin-top: 1.5rem; }
+{% endblock %}
+{% block content %}
   <h1>Candidate: momentum × opportunity</h1>
-  <p><a href="/">&laquo; top term theo accel</a> ·
-     <a href="/review">hàng đợi chờ duyệt &raquo;</a></p>
 
-  <form method="get">
+  <form class="filters" method="get">
     <label>Niche:
       <select name="niche" onchange="this.form.submit()">
         <option value="">(tất cả)</option>
@@ -46,7 +36,7 @@
   </form>
 
   <p>{{ rows|length }} candidate có đủ cả momentum và opportunity (candidate chưa qua
-     enrich không hiện ở đây — opportunity còn trống).</p>
+     enrich không hiện ở đây — opportunity còn trống). Bấm vào term để xem chi tiết.</p>
 
   {% set size = 480 %}
   {% set mid = size / 2 %}
@@ -65,11 +55,13 @@
       {% for r in rows %}
       {% set cx = (r.momentum|float) * size %}
       {% set cy = size - (r.opportunity|float) * size %}
+      <a href="/terms/{{ r.term_id }}">
       <circle cx="{{ cx }}" cy="{{ cy }}" r="5"
               class="point risk-{{ (r.risk_tier or '')|lower }} status-{{ r.status }}">
         <title>{{ r.text_display }} ({{ r.niche or "?" }}, {{ r.risk_tier or "chưa rõ risk" }}, {{ r.status }})
 momentum={{ "%.3f"|format(r.momentum) }} opportunity={{ "%.3f"|format(r.opportunity) }}</title>
       </circle>
+      </a>
       {% endfor %}
 
       <text x="{{ mid - 30 }}" y="{{ size + 20 }}" class="axis-label">momentum &#8594;</text>
@@ -78,7 +70,7 @@ momentum={{ "%.3f"|format(r.momentum) }} opportunity={{ "%.3f"|format(r.opportun
   </div>
 
   {% if rows %}
-  <table>
+  <table class="cand">
     <thead>
       <tr>
         <th>term</th><th>niche</th><th>risk_tier</th><th>status</th>
@@ -88,7 +80,7 @@ momentum={{ "%.3f"|format(r.momentum) }} opportunity={{ "%.3f"|format(r.opportun
     <tbody>
       {% for r in rows %}
       <tr>
-        <td>{{ r.text_display }}</td>
+        <td><a class="row-link" href="/terms/{{ r.term_id }}">{{ r.text_display }}</a></td>
         <td>{{ r.niche or "" }}</td>
         <td>{{ r.risk_tier or "" }}</td>
         <td>{{ r.status }}</td>
@@ -99,5 +91,4 @@ momentum={{ "%.3f"|format(r.momentum) }} opportunity={{ "%.3f"|format(r.opportun
     </tbody>
   </table>
   {% endif %}
-</body>
-</html>
+{% endblock %}

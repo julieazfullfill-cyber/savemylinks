@@ -1,0 +1,31 @@
+{% extends "_base.html" %}
+{% block title %}POD Trend Scanner — USPTO index{% endblock %}
+{% block content %}
+  <h1>Local USPTO trademark index (Lớp 2 risk gate)</h1>
+  <p>Nạp file/thư mục bulk XML hoặc ZIP USPTO ("Trademark Full Text XML Data") vào bảng
+     <code>uspto_trademarks</code>. Trỏ thẳng vào thư mục chứa nhiều file để nạp hết
+     trong một lượt — không cần tự giải nén, file đã nạp trước tự động bỏ qua. Xem
+     docs/RISK_POLICY.md Lớp 2.</p>
+
+  {% if request.query_params.get("error") %}
+  <p class="result-box block">{{ request.query_params.get("error") }}</p>
+  {% endif %}
+
+  <form method="post" action="/uspto/load">
+    <label>Đường dẫn (file .xml/.zip hoặc thư mục):
+      <input type="text" name="path" size="60" required placeholder="F:\...\appIdea\data">
+    </label>
+    <label><input type="checkbox" name="force" value="true"> nạp lại cả file đã có</label>
+    <button class="btn primary" type="submit">Nạp</button>
+  </form>
+
+  <p class="muted">USPTO_INDEX_COVERAGE_COMPLETE hiện tại: <strong>{{ coverage_complete }}</strong> —
+     chỉ set true trong <code>.env</code> sau khi đã nạp đủ toàn bộ 91 file, nếu không
+     "không tìm thấy match" vẫn phải rơi vào review (fail-closed, xem
+     docs/RISK_POLICY.md).</p>
+
+  <h2>Tiến độ</h2>
+  <div id="uspto-status" hx-get="/uspto/status-fragment" hx-trigger="load, every 3s" hx-swap="innerHTML">
+    {% include "_uspto_status.html" %}
+  </div>
+{% endblock %}

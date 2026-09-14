@@ -1,11 +1,6 @@
-<!doctype html>
-<html lang="vi">
-<head>
-  <meta charset="utf-8">
-  <title>POD Trend Scanner — hàng đợi chờ duyệt</title>
-  <style>
-    body { font-family: monospace; margin: 2rem; }
-    .card { border: 1px solid #ccc; border-radius: 4px; padding: 12px 16px; margin-bottom: 12px; }
+{% extends "_base.html" %}
+{% block title %}POD Trend Scanner — hàng đợi chờ duyệt{% endblock %}
+{% block extra_style %}
     .card.blocked { border-left: 6px solid #dc2626; }
     .card.review { border-left: 6px solid #d97706; }
     .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; color: #fff; }
@@ -16,20 +11,21 @@
     table.flags { border-collapse: collapse; margin-top: 8px; font-size: 12px; }
     table.flags th, table.flags td { border: 1px solid #ddd; padding: 2px 8px; text-align: left; }
     .evidence { color: #555; }
-  </style>
-</head>
-<body>
+    .actions { margin-top: 10px; }
+    .actions input[type=text] { width: 160px; }
+{% endblock %}
+{% block content %}
   <h1>Hàng đợi chờ duyệt (Lớp 4)</h1>
-  <p><a href="/">&laquo; top term</a> · <a href="/candidates">momentum × opportunity &raquo;</a></p>
-  <p>{{ rows|length }} candidate đang chờ — trang này CHỈ HIỂN THỊ, nút duyệt/từ chối
-     là việc Phase 4 (<code>scanner approve --candidate-id N --by ai_đó</code> hiện
-     làm qua CLI).</p>
+  <p>{{ rows|length }} candidate đang chờ. Duyệt (approve) hoặc từ chối (reject) trực
+     tiếp ở đây — T2/T3 bắt buộc nhập tên/email người duyệt trước khi approve
+     (RISK_POLICY.md, không có đường tắt). CLI tương đương:
+     <code>scanner approve --candidate-id N --by ai_đó</code>.</p>
 
   {% for r in rows %}
   <div class="card {{ r.risk_level }}">
     <span class="badge {{ r.risk_level }}">{{ r.risk_level }}</span>
     <span class="badge tier-{{ (r.risk_tier or '?')|lower }}">{{ r.risk_tier or "tier ?" }}</span>
-    <strong>{{ r.text_display }}</strong>
+    <strong><a class="row-link" href="/terms/{{ r.term_id }}">{{ r.text_display }}</a></strong>
     <span class="evidence">({{ r.niche or "niche ?" }}, candidate #{{ r.id }})</span>
     {% if r.momentum is not none %}
       <span class="evidence">momentum={{ "%.3f"|format(r.momentum) }}</span>
@@ -53,9 +49,24 @@
       </tbody>
     </table>
     {% endif %}
+
+    <div class="actions">
+      {% if r.risk_level == "blocked" %}
+        <span class="muted">candidate đã bị blocked — không thể approve, chỉ có thể reject.</span>
+      {% else %}
+      <form class="inline" method="post" action="/candidates/{{ r.id }}/approve">
+        <input type="text" name="by" placeholder="tên/email người duyệt"
+               {{ "required" if r.risk_tier in ("T2", "T3") else "" }}>
+        <button class="btn primary" type="submit">Duyệt (approve)</button>
+      </form>
+      {% endif %}
+      <form class="inline" method="post" action="/candidates/{{ r.id }}/reject">
+        <input type="text" name="by" placeholder="tên/email người từ chối (tuỳ chọn)">
+        <button class="btn danger" type="submit">Từ chối (reject)</button>
+      </form>
+    </div>
   </div>
   {% else %}
   <p>Không có candidate nào đang chờ duyệt.</p>
   {% endfor %}
-</body>
-</html>
+{% endblock %}

@@ -1,0 +1,24 @@
+<p>
+  {% if state.running %}
+  <strong>Đang nạp…</strong> file hiện tại: {{ state.current_file or "?" }}
+  ({{ state.files_done }}/{{ state.files_total }})
+  {% elif state.last_error %}
+  <span class="result-box block">Lần nạp gần nhất lỗi: {{ state.last_error }}</span>
+  {% elif state.last_finished_at %}
+  Lần nạp gần nhất xong lúc {{ state.last_finished_at }}
+  {% else %}
+  Chưa chạy lượt nạp nào trong phiên server này.
+  {% endif %}
+</p>
+<p>Tổng cộng trong index: <strong>{{ status.files_loaded }}</strong> file,
+   <strong>{{ status.total_records }}</strong> record.</p>
+<table>
+  <thead><tr><th>status_category</th><th>số lượng</th></tr></thead>
+  <tbody>
+    {% for cat, n in status.by_status_category.items() %}
+    <tr><td>{{ cat }}</td><td>{{ n }}</td></tr>
+    {% else %}
+    <tr><td colspan="2" class="muted">chưa có dữ liệu</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

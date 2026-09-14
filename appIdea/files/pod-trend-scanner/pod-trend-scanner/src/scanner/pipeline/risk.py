@@ -391,6 +391,23 @@ async def approve_candidate(
     )
 
 
+async def reject_candidate(
+    session: AsyncSession, candidate: Candidate, rejected_by: str | None
+) -> None:
+    """status='rejected' (DATA_MODEL.md enum) — không cần enforce gì thêm (từ chối
+    luôn an toàn, không như approve). Ghi audit trail cùng chỗ với approve/tự động."""
+    candidate.status = "rejected"
+    session.add(
+        RiskFlag(
+            term_id=candidate.term_id,
+            candidate_id=candidate.id,
+            layer="human_rejection",
+            severity="info",
+            evidence={"rejected_by": rejected_by},
+        )
+    )
+
+
 def is_eligible_for_export(candidate: Candidate, risk_tier: str) -> bool:
     """Kiểm tra lại lần nữa, độc lập với approve_candidate() — không tin một điểm
     chặn duy nhất (fail-closed nhân đôi)."""
@@ -428,7 +445,7 @@ class RiskGateResult:
     layers_run: tuple[int, ...]
 
 
-async def _write_flag(
+async def write_risk_flag(
     session: AsyncSession, term_id: int, layer: str, verdict: Verdict, evidence: dict[str, Any]
 ) -> None:
     severity = {"pass": "info", "review": "review", "block": "block"}[verdict]
@@ -459,7 +476,7 @@ async def run_risk_gate(
 
     if 1 in required:
         result1 = check_blocklist(term.text_display, blocklist)
-        await _write_flag(
+        await write_risk_flag(
             session,
             term_id,
             "blocklist",
@@ -475,13 +492,13 @@ async def run_risk_gate(
 
     if 2 in required:
         result2 = await check_uspto(session, term_id, term.text_norm)
-        await _write_flag(session, term_id, "uspto", result2.verdict, result2.evidence)
+        await write_risk_flag(session, term_id, "uspto", result2.verdict, result2.evidence)
         verdicts.append(result2.verdict)
         layers_run.append(2)
 
     if 3 in required:
         result3 = await classify_origin(term.text_norm, http_client)
-        await _write_flag(session, term_id, "llm_origin", result3.verdict, result3.evidence)
+        await write_risk_flag(session, term_id, "llm_origin", result3.verdict, result3.evidence)
         verdicts.append(result3.verdict)
         layers_run.append(3)
 

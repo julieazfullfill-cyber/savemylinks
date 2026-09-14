@@ -1,0 +1,108 @@
+{% extends "_base.html" %}
+{% block title %}{{ term.text_display }} — chi tiết{% endblock %}
+{% block content %}
+  <p><a class="row-link" href="/">&laquo; top term</a></p>
+  <h1>{{ term.text_display }}</h1>
+  <p class="muted">niche: {{ term.niche or "?" }} · risk_tier (suy ra): {{ risk_tier }} ·
+     first_seen_at: {{ term.first_seen_at }}</p>
+
+  {% if request.query_params.get("error") %}
+  <p class="result-box block">{{ request.query_params.get("error") }}</p>
+  {% endif %}
+
+  <h2>Risk gate — chạy thủ công</h2>
+  <p class="muted">Bấm mới chạy (không tự động khi tải trang) — ghi luôn vào
+     <code>risk_flags</code>, giống hệt <code>scanner risk</code> chạy qua CLI.</p>
+  <button class="btn" hx-post="/terms/{{ term.id }}/check-uspto" hx-target="#uspto-result" hx-swap="innerHTML">
+    Check USPTO (Lớp 2)
+  </button>
+  <span class="htmx-indicator">đang chạy…</span>
+  <div id="uspto-result"></div>
+  <br>
+  <button class="btn" hx-post="/terms/{{ term.id }}/check-llm" hx-target="#llm-result" hx-swap="innerHTML">
+    Check LLM origin (Lớp 3)
+  </button>
+  <span class="htmx-indicator">đang gọi LLM…</span>
+  <div id="llm-result"></div>
+
+  <h2>Metrics gần đây</h2>
+  {% if metrics %}
+  <table>
+    <thead><tr><th>ngày</th><th>value_norm</th><th>velocity_7d</th><th>accel</th><th>n_sources</th></tr></thead>
+    <tbody>
+      {% for m in metrics %}
+      <tr>
+        <td>{{ m.date }}</td>
+        <td>{{ "%.1f"|format(m.value_norm) if m.value_norm is not none else "" }}</td>
+        <td>{{ "%.2f"|format(m.velocity_7d) if m.velocity_7d is not none else "" }}</td>
+        <td>{{ "%.2f"|format(m.accel) if m.accel is not none else "" }}</td>
+        <td>{{ m.n_sources }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Chưa có metrics cho term này.</p>
+  {% endif %}
+
+  <h2>Risk flags gần đây</h2>
+  {% if flags %}
+  <table>
+    <thead><tr><th>lớp</th><th>severity</th><th>evidence</th><th>lúc</th></tr></thead>
+    <tbody>
+      {% for f in flags %}
+      <tr><td>{{ f.layer }}</td><td>{{ f.severity }}</td><td>{{ f.evidence }}</td><td>{{ f.created_at }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Chưa có risk flag nào.</p>
+  {% endif %}
+
+  <h2>Candidate</h2>
+  {% if candidate %}
+  <p>candidate #{{ candidate.id }} — risk_level: <strong>{{ candidate.risk_level }}</strong> ·
+     status: <strong>{{ candidate.status }}</strong>
+     {% if candidate.momentum is not none %} · momentum={{ "%.3f"|format(candidate.momentum) }}{% endif %}
+     {% if candidate.opportunity is not none %} · opportunity={{ "%.3f"|format(candidate.opportunity) }}{% endif %}
+  </p>
+
+  <h3>Design brief (Phase 4)</h3>
+  {% if brief %}
+    <p>Đã sinh brief #{{ brief.id }} lúc {{ brief.created_at }}
+       {% if brief.exported_at %} · <strong>đã export lúc {{ brief.exported_at }}</strong>{% endif %}</p>
+    {% if brief.image_prompt %}
+    <p><strong>Image prompt (render.py sinh, không phải LLM):</strong></p>
+    <pre style="white-space:pre-wrap;">{{ brief.image_prompt }}</pre>
+    {% else %}
+    <p class="muted">Typography-only (art_layer.enabled=false) — không cần model ảnh.</p>
+    {% endif %}
+    <details><summary>Xem toàn bộ payload JSON</summary>
+      <pre style="white-space:pre-wrap;">{{ brief.payload }}</pre>
+    </details>
+    {% if not brief.exported_at %}
+    <form method="post" action="/candidates/{{ candidate.id }}/export-brief">
+      <button class="btn primary" type="submit">Export brief</button>
+    </form>
+    <p class="muted">Export chỉ thành công nếu candidate đã approved (T2/T3 bắt buộc
+       approved_by, RISK_POLICY.md) — duyệt ở <a href="/review">hàng đợi duyệt</a>.</p>
+    {% endif %}
+  {% elif candidate.risk_level == "blocked" %}
+    <p class="muted">candidate đã bị blocked — không sinh brief cho term này
+       (fail-closed, xem pipeline/brief.py).</p>
+  {% else %}
+    <form method="post" action="/candidates/{{ candidate.id }}/generate-brief">
+      <label>Product:
+        <select name="product">
+          {% for p in product_presets %}
+          <option value="{{ p }}" {{ "selected" if p == default_product_preset else "" }}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn primary" type="submit">Sinh design brief (LLM) + prompt ảnh</button>
+    </form>
+  {% endif %}
+  {% else %}
+  <p class="muted">Term này chưa có candidate nào (chưa qua <code>scanner score</code>).</p>
+  {% endif %}
+{% endblock %}

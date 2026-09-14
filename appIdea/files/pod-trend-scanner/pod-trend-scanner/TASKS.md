@@ -76,7 +76,7 @@ Mục tiêu: biết term nào đáng làm, và biết làm vào lúc nào.
 - [x] Lớp 2: USPTO lookup, exact phrase + normalized, lọc class 25, cache 30 ngày
 - [x] Lớp 3: LLM origin classification
 - [x] Lớp 4: trạng thái chờ người duyệt trong dashboard
-- [ ] Ghi `risk_flags`, enforce fail-closed ở `pipeline/brief.py`
+- [x] Ghi `risk_flags`, enforce fail-closed ở `pipeline/brief.py`
 
 **Acceptance**
 - Term chứa tên franchise trong blocklist → `blocked`, không bao giờ tới bước brief
@@ -90,13 +90,15 @@ Mục tiêu: biết term nào đáng làm, và biết làm vào lúc nào.
 
 Đọc `docs/DESIGN_BRIEF_SPEC.md`. Đây là output cuối cùng của cả hệ thống.
 
-- [ ] Pydantic model cho `design_brief` khớp schema trong spec
-- [ ] `pipeline/brief.py` — LLM sinh brief, Batch API, validate, retry 1 lần
-- [ ] `pipeline/render.py` — brief → image prompt. **Code thuần, không LLM.**
-      Template theo product_type, HARD_NEGATIVE dùng chung
-- [ ] Nhánh typography-only: `art_layer.enabled=false` thì bỏ qua model ảnh
-- [ ] Dashboard: duyệt/từ chối, export JSON brief
-- [ ] Bảng `design_briefs` lưu brief dạng JSONB để query được
+- [x] Pydantic model cho `design_brief` khớp schema trong spec (`pipeline/design_brief_schema.py`)
+- [x] `pipeline/brief.py` — LLM sinh brief, validate, retry 1 lần. **Batch API: CHƯA
+      làm** — dùng Messages API đồng bộ, cùng giới hạn đã ghi nhận ở Lớp 3 risk.py
+      (môi trường build không có Anthropic SDK); nâng cấp sau, không chặn Phase 4
+- [x] `pipeline/render.py` — brief → image prompt. Code thuần, không LLM.
+      Một template dùng chung + `PRODUCT_CONSTRAINTS` theo (type, print_area)
+- [x] Nhánh typography-only: `art_layer.enabled=false` thì bỏ qua model ảnh
+- [x] Dashboard: duyệt/từ chối (`/review`), sinh + export brief (`/terms/{id}`)
+- [x] Bảng `design_briefs` lưu brief dạng JSONB để query được (đã có từ Phase 0)
 
 **Acceptance**
 - 3 brief mẫu trong spec tái tạo được đúng qua renderer, prompt output khớp

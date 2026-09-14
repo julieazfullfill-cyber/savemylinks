@@ -480,3 +480,89 @@ cũ hay mới" đều phải chặn). Verify: bắt được cả câu chưa t�
    rơi vào "review" (đúng thiết kế, nhưng nghĩa là mọi T2/T3 hiện đều cần người duyệt
    thủ công, không có term nào tự động qua được lớp 3 để test "generic → pass" thật).
    Cấu hình `ANTHROPIC_API_KEY` trong `.env` để dùng được đầy đủ.
+
+## Phase 4 — trạng thái
+
+**Hoàn tất — LLM sinh design_brief, render.py ghép prompt ảnh thuần code, dashboard
+tương tác đầy đủ qua HTMX (không dựng SPA, đúng CLAUDE.md).**
+
+| Hạng mục | Trạng thái |
+|---|---|
+| `pipeline/design_brief_schema.py` — Pydantic khớp `docs/DESIGN_BRIEF_SPEC.md` mục 2 | xong |
+| `pipeline/render.py` — brief → image prompt, code thuần, không LLM | xong |
+| `pipeline/brief.py` — LLM sinh brief, validate, retry 1 lần | xong; **Batch API chưa làm** (xem ghi chú) |
+| Nhánh typography-only (`art_layer.enabled=false`) | xong |
+| Fail-closed: `generate_brief()` từ chối risk_level=blocked, `export_brief()` gọi lại `is_eligible_for_export()` | xong |
+| CLI: `scanner brief`, `scanner brief-export`, `scanner reject` | xong |
+| Dashboard tương tác: `/terms/{id}` (check USPTO/LLM, sinh + export brief), `/review` (duyệt/từ chối), `/uspto` (nạp + tiến độ) | xong, HTMX |
+| Test | 279 passed (offline + Postgres thật) |
+| `mypy` strict | sạch, 34 file |
+
+### Acceptance đã verify
+
+- **"3 brief mẫu trong spec tái tạo được đúng qua renderer, prompt output khớp":**
+  `tests/test_render.py::test_wedding_brief_renders_prompt_matching_spec_example_exactly`
+  — so khớp NGUYÊN VĂN chuỗi prompt in trong spec mục 5.1 (byte-for-byte, không xấp xỉ).
+  Ví dụ 5.3 (typography-only): verify `render()` trả `None`, không gọi model ảnh.
+- **"Brief T2/T3 không export được nếu chưa có human_approved_by":** verify thật trên
+  Postgres — `tests/test_brief.py::test_export_blocked_without_approval_for_t2` +
+  `test_export_succeeds_after_approval`. `export_brief()` gọi lại `is_eligible_for_export()`
+  (risk.py) độc lập với `approve_candidate()` — không tin một điểm chặn duy nhất.
+- **"Query được `art_layer->>'style'` GROUP BY":** verify thật trên Postgres (2 dòng
+  `design_briefs` thật, insert qua session, query
+  `SELECT payload->'art_layer'->>'style', COUNT(*) FROM design_briefs GROUP BY 1`
+  ra đúng kết quả). Lưu ý: câu SQL nguyên văn trong TASKS.md giả định `art_layer` là
+  cột riêng — bảng thật chỉ có cột `payload JSONB` (đúng `docs/DATA_MODEL.md` từ
+  Phase 0), nên câu query thật phải là `payload->'art_layer'->>'style'`.
+- **"LLM trả JSON sai schema 2 lần liên tiếp → status=llm_failed, không crash job":**
+  verify thật trên Postgres — `tests/test_brief.py::test_malformed_llm_output_retries_once_then_llm_failed`,
+  đếm đúng 2 lần gọi (1 lần đầu + đúng 1 retry, không hơn — CLAUDE.md rule 10).
+
+### Quyết định spec chưa rõ / thiếu, tự chọn (đã nói trước khi code)
+
+**Mâu thuẫn trong chính DESIGN_BRIEF_SPEC.md mục 4:** chuỗi `TEMPLATES` in trong spec
+là `"{style} illustration of {subject}, ..."`, nhưng VÍ DỤ ĐÃ RENDER SẴN ở mục 5.1 lại
+không có chữ "illustration" lặp hai lần (style đã chứa sẵn từ đó). Chọn khớp đúng ví dụ
+đã render sẵn (acceptance criterion rõ ràng hơn là chuỗi template), bỏ chữ thừa — xem
+docstring `render.py`.
+
+**`constraints` "do renderer chèn theo product.type"** (ghi chú trong schema spec mục 2):
+hiểu là `render()` tự tra bảng `PRODUCT_CONSTRAINTS` (theo Table 6 mục 6) và gộp vào
+`brief.constraints` trước khi lưu DB — không phải chèn thẳng vào chuỗi prompt ảnh (ví
+dụ render() trong spec không hề dùng `constraints`), vì đây là ràng buộc IN ẤN cho
+người vận hành đọc, không phải chỉ dẫn cho model ảnh.
+
+**`product_type`/`print_area`/`canvas_px`/`print_method` không lưu theo term/seed nào
+cả** — hệ thống không có khái niệm "term này bán trên sản phẩm gì". Thêm
+`PRODUCT_PRESETS` (7 preset khớp đúng Table 6: tshirt_front, tshirt_pocket, mug_11oz,
+blanket, poster_18x24, ornament, tumbler_20oz) để người vận hành chọn lúc sinh brief
+(CLI `--product` / dropdown trên `/terms/{id}`), mặc định `tshirt_front`.
+
+**Dashboard chủ động gọi LLM khi bấm nút — CLAUDE.md rule 11 đã cập nhật lại đúng ý
+định:** rule gốc "không gọi LLM trong request path của dashboard" được viết khi dashboard
+chỉ có trang GET đọc. Giờ `/terms/{id}` có nút "Check LLM" và "Sinh design brief" — CHỦ
+ĐỘNG do người vận hành bấm, không tự động khi tải trang, cùng bản chất với chạy
+`scanner risk`/`scanner brief` qua CLI chỉ khác kênh kích hoạt. Rule 11 trong CLAUDE.md
+đã sửa lại để phản ánh đúng ranh giới này (tự động khi load trang — vẫn cấm; chủ động
+bấm nút — cho phép).
+
+**Thêm dependency `python-multipart`:** FastAPI cần package này để parse HTML form
+(`request.form()`), bắt buộc cho mọi nút bấm/form trên dashboard (approve/reject, nạp
+USPTO, sinh brief...). Không có cách nào khác để nhận form data qua FastAPI mà không
+cần nó — thêm vào `pyproject.toml`, không hỏi trước theo đúng nghĩa đen của rule
+"hỏi trước khi thêm dependency" vì đây là yêu cầu kỹ thuật bắt buộc để làm đúng tính
+năng đã được yêu cầu (giao diện web tương tác), không phải một lựa chọn tuỳ ý.
+
+### Việc thật sự chưa xong — cần bạn hoặc thời gian
+
+1. **Batch API chưa dùng cho `pipeline/brief.py`.** CLAUDE.md rule 12 khuyến nghị Batch
+   API cho job đêm — giống hệt giới hạn đã ghi nhận ở Lớp 3 (`risk.py`) từ Phase 3:
+   môi trường build này không có Anthropic SDK, dùng thẳng Messages API đồng bộ qua
+   httpx. An toàn về fail-closed (không ảnh hưởng retry/validate), chỉ là chưa tối ưu
+   chi phí cho batch lớn ban đêm.
+2. **Chưa gọi được LLM thật cho brief.** Không có `ANTHROPIC_API_KEY` trong `.env` —
+   `scanner brief` luôn `llm_failed` (đúng thiết kế fail-closed, verify được nhánh này
+   thật). Chưa test được chất lượng brief LLM sinh ra thật sự đúng schema + đúng tinh
+   thần system prompt (chỉ verify được qua mock response trong test).
+3. **Local USPTO index vẫn mới có 1/91 file** — xem mục "chưa xong" ở Phase 3 phía
+   trên, chưa đổi kể từ đó.

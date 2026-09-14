@@ -70,6 +70,7 @@ src/scanner/
     risk.py          # 4 lớp risk gate, fail-closed — xem docs/RISK_POLICY.md
     uspto_index.py   # ETL bulk XML USPTO -> bảng uspto_trademarks (Lớp 2 dùng local index, không có live API)
     uspto_status_codes.py  # Table 1 Trademark Status Codes chính thức + phân loại LIVE/DEAD/UNKNOWN
+    design_brief_schema.py  # Pydantic schema design_brief — docs/DESIGN_BRIEF_SPEC.md mục 2
     brief.py         # LLM sinh design_brief
     render.py        # brief -> image prompt (code thuần, KHÔNG dùng LLM)
   web/
@@ -114,7 +115,11 @@ docs/
    LLM KHÔNG phát hiện trend — số liệu làm việc đó.
 10. Mọi output LLM validate bằng Pydantic trước khi ghi DB. Fail thì retry đúng 1 lần
     kèm thông báo lỗi, fail lần hai thì đánh dấu `status=llm_failed` và bỏ qua.
-11. Không gọi LLM trong request path của dashboard. Dashboard chỉ đọc dữ liệu có sẵn.
+11. Không TỰ ĐỘNG gọi LLM khi dashboard tải trang (page load) — mọi trang GET (`/`,
+    `/candidates`, `/review`, `/terms/{id}`) chỉ đọc dữ liệu có sẵn. Một nút bấm do
+    người vận hành CHỦ ĐỘNG kích hoạt (vd. "Check LLM" trên `/terms/{id}`) được phép
+    gọi LLM thật — về bản chất cùng loại thao tác với chạy `scanner risk`/`scanner
+    brief` qua CLI, chỉ khác kênh kích hoạt, không phải dashboard tự ý gọi.
 12. Dùng Batch API cho job đêm.
 
 **Risk**
@@ -151,7 +156,10 @@ uv run scanner uspto-index --path data/uspto_bulk/   # nạp cả thư mục (.x
 uv run scanner uspto-index-status   # số file đã nạp + breakdown LIVE/DEAD/UNKNOWN
 uv run scanner risk            # 4 lớp risk gate cho candidate mới, ghi risk_flags
 uv run scanner approve --candidate-id N --by ai_đó   # T2/T3 bắt buộc --by
-uv run uvicorn scanner.web.app:app --reload   # / top term, /candidates scatter, /review hàng đợi duyệt
+uv run scanner reject --candidate-id N --by ai_đó
+uv run scanner brief --candidate-id N --product tshirt_front   # LLM sinh design_brief + render prompt ảnh
+uv run scanner brief-export --candidate-id N   # chỉ export được nếu đã approved
+uv run uvicorn scanner.web.app:app --reload   # / top term, /candidates, /review, /terms/{id}, /uspto — tương tác qua HTMX
 ```
 
 ## Định nghĩa "xong" cho mọi task

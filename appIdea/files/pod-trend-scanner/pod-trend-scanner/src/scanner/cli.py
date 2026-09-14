@@ -18,11 +18,21 @@ from scanner.core.seeds import CORE_NICHES, parse_seed_file, sync_seeds
 from scanner.pipeline.calendar import production_calendar
 from scanner.pipeline.collect import collect_source
 from scanner.pipeline.enrich import DEFAULT_TOP_N, enrich_top_terms
+from scanner.pipeline.brief import (
+    DEFAULT_PRODUCT_PRESET,
+    PRODUCT_PRESETS,
+    BriefBlockedError,
+    BriefExportBlockedError,
+    BriefLLMFailedError,
+    export_brief,
+    generate_brief,
+)
 from scanner.pipeline.import_etsy import import_etsy_csv
 from scanner.pipeline.risk import (
     ApprovalRequiredError,
     approve_candidate,
     determine_risk_tier,
+    reject_candidate,
     run_risk_gate_for_pending_candidates,
 )
 from scanner.pipeline.metrics import recompute_history, run_metrics
@@ -308,6 +318,94 @@ def approve(
             await dispose_engine()
 
     typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command()
+def reject(
+    candidate_id: Annotated[int, typer.Option("--candidate-id", help="id trong bảng candidates")],
+    by: Annotated[str | None, typer.Option("--by", help="tên/email người từ chối")] = None,
+) -> None:
+    """Từ chối một candidate — không xuất hiện lại trong hàng đợi duyệt mặc định."""
+    _setup()
+
+    async def run() -> dict[str, str]:
+        from scanner.core.models import Candidate
+
+        try:
+            async with session_scope() as session:
+                candidate = await session.get(Candidate, candidate_id)
+                if candidate is None:
+                    return {"error": f"không có candidate id={candidate_id}"}
+                await reject_candidate(session, candidate, rejected_by=by)
+                return {"candidate_id": str(candidate_id), "status": candidate.status}
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command()
+def brief(
+    candidate_id: Annotated[int, typer.Option("--candidate-id", help="id trong bảng candidates")],
+    product: Annotated[
+        str, typer.Option("--product", help=f"một trong: {sorted(PRODUCT_PRESETS)}")
+    ] = DEFAULT_PRODUCT_PRESET,
+) -> None:
+    """Sinh design_brief qua LLM cho một candidate + render image prompt (Phase 4)."""
+    _setup()
+
+    async def run() -> dict[str, object]:
+        from scanner.core.models import Candidate
+
+        try:
+            async with session_scope() as session:
+                candidate = await session.get(Candidate, candidate_id)
+                if candidate is None:
+                    return {"error": f"không có candidate id={candidate_id}"}
+                try:
+                    row = await generate_brief(session, candidate, product_preset=product)
+                except (BriefBlockedError, BriefLLMFailedError) as exc:
+                    return {"error": str(exc)}
+                await session.commit()
+                return {
+                    "brief_id": row.id,
+                    "candidate_id": candidate_id,
+                    "image_prompt": row.image_prompt,
+                    "payload": row.payload,
+                }
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False, indent=2))
+
+
+@app.command("brief-export")
+def brief_export(
+    candidate_id: Annotated[int, typer.Option("--candidate-id", help="id trong bảng candidates")],
+) -> None:
+    """Xuất design_brief đã sinh — chỉ thành công nếu candidate đã approved (T2/T3
+    bắt buộc approved_by, RISK_POLICY.md)."""
+    _setup()
+
+    async def run() -> dict[str, object]:
+        from scanner.core.models import Candidate
+
+        try:
+            async with session_scope() as session:
+                candidate = await session.get(Candidate, candidate_id)
+                if candidate is None:
+                    return {"error": f"không có candidate id={candidate_id}"}
+                tier = await determine_risk_tier(session, candidate.term_id)
+                try:
+                    payload = await export_brief(session, candidate, tier)
+                except BriefExportBlockedError as exc:
+                    return {"error": str(exc)}
+                await session.commit()
+                return payload
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False, indent=2))
 
 
 @app.command("uspto-index")
