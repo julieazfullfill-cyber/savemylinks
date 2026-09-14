@@ -1,0 +1,80 @@
+{% extends "_base.html" %}
+{% block title %}POD Trend Scanner — seeds{% endblock %}
+{% block extra_style %}
+    form.add-seed label { display: block; margin-top: 6px; }
+    form.add-seed input[type=text] { width: 320px; }
+{% endblock %}
+{% block content %}
+  <h1>Seeds</h1>
+  <p class="muted">Nạp hàng loạt vẫn nên đi qua <code>data/seed_keywords.json</code> +
+     <code>scanner seed --file ...</code> (có review trong git). Form dưới đây để thêm
+     nhanh 1 seed mới phát hiện được — chạy đúng logic upsert giống hệt CLI
+     (idempotent theo cặp seed+niche).</p>
+
+  {% if request.query_params.get("error") %}
+  <p class="result-box block">{{ request.query_params.get("error") }}</p>
+  {% endif %}
+
+  <h2>Thêm seed mới</h2>
+  <form class="add-seed" method="post" action="/seeds">
+    <label>Seed (cụm từ gốc để adapter mở rộng):
+      <input type="text" name="seed" required placeholder="vd. minimalist line art shirt">
+    </label>
+    <label>Niche:
+      <input type="text" name="niche" required list="niche-options" placeholder="vd. funny_quote">
+      <datalist id="niche-options">
+        {% for n in niches %}<option value="{{ n }}">{% endfor %}
+      </datalist>
+    </label>
+    <label>Risk tier:
+      <select name="risk_tier" required>
+        {% for t in risk_tiers %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+      — xem <code>docs/RISK_POLICY.md</code> bảng tier trước khi chọn.
+    </label>
+    <label>Sub-niche (tuỳ chọn): <input type="text" name="sub_niche"></label>
+    <label><input type="checkbox" name="personalized" value="true"> personalized (khách cần nhập tên/ngày/ảnh)</label>
+    <label>Intent (tuỳ chọn):
+      <select name="intent">
+        <option value="">(không rõ)</option>
+        <option value="gift">gift</option>
+        <option value="self">self</option>
+      </select>
+    </label>
+    <label>Peak months (tuỳ chọn, vd. "1,2,3" — để trống nếu evergreen):
+      <input type="text" name="peak_months" placeholder="1,2,3">
+    </label>
+    <label>Note (tuỳ chọn): <input type="text" name="note"></label>
+    <p><button class="btn primary" type="submit">Thêm seed</button></p>
+  </form>
+
+  <h2>Tổng quan theo niche × tier</h2>
+  <table>
+    <thead><tr><th>niche</th><th>risk_tier</th><th>số seed</th></tr></thead>
+    <tbody>
+      {% for r in summary %}
+      <tr><td>{{ r.niche }}</td><td>{{ r.risk_tier }}</td><td>{{ r.n }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Mới thêm gần đây</h2>
+  {% if recent %}
+  <table>
+    <thead><tr><th>seed</th><th>niche</th><th>risk_tier</th><th>personalized</th><th>enabled</th></tr></thead>
+    <tbody>
+      {% for s in recent %}
+      <tr>
+        <td>{{ s.seed }}</td>
+        <td>{{ s.niche }}</td>
+        <td>{{ s.risk_tier }}</td>
+        <td>{{ "có" if s.personalized else "" }}</td>
+        <td>{{ "có" if s.enabled else "tắt" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Chưa có seed nào.</p>
+  {% endif %}
+{% endblock %}

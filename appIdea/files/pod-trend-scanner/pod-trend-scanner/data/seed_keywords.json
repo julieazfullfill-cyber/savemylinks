@@ -209,6 +209,35 @@
       ]
     },
 
+    "funny_quote": {
+      "_risk": "T1",
+      "_rule": "Seed the PRODUCT/AUDIENCE the quote goes on, not a specific quote. The scanner finds which of these is trending; the LLM writes an original quote in that shape. Every generated quote still goes through blocklist + USPTO exact-phrase check on the final phrase (T1 requirement) before it can auto-approve.",
+      "seeds": [
+        "funny quote shirt", "sarcastic quote mug", "witty saying tumbler",
+        "funny quote tote bag", "funny quote sticker", "funny quote pillow",
+        "funny quote candle", "funny quote wall art", "funny quote hoodie",
+        "funny quote sweatshirt", "funny quote apron", "mom life funny quote shirt",
+        "dog mom funny quote mug", "cat lady funny quote shirt", "wine o clock funny shirt",
+        "coffee lover funny mug", "office humor quote mug", "work from home funny shirt",
+        "retirement funny quote shirt", "adulting funny quote shirt",
+        "procrastination funny shirt", "self care funny quote shirt",
+        "gym motivation funny shirt", "kitchen humor funny apron",
+        "gardening funny quote shirt", "camping funny quote shirt",
+        "beach funny quote shirt", "holiday humor funny shirt",
+        "christmas funny quote shirt", "thanksgiving humor shirt",
+        "new year funny quote shirt", "valentine funny single shirt",
+        "graduation funny quote shirt", "boss appreciation funny mug",
+        "coworker funny gift mug", "family reunion funny shirt",
+        "road trip funny quote shirt", "camper life funny shirt",
+        "plant lady funny quote shirt", "bookworm funny quote shirt",
+        "night owl funny quote shirt", "morning person funny shirt",
+        "snack lover funny shirt", "pizza lover funny quote shirt",
+        "taco lover funny quote shirt", "introvert funny quote mug",
+        "sassy quote shirt", "motivational funny quote shirt",
+        "funny birthday quote shirt", "funny anniversary quote mug"
+      ]
+    },
+
     "pop_culture": {
       "_risk": "T2",
       "_rule": "Never seed a franchise, character, or title. Seed the FORMAT of the joke instead, so the LLM produces an original phrase in a currently-popular shape rather than a reference you cannot own. Every output goes through origin classification + USPTO + human review.",

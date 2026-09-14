@@ -8,6 +8,7 @@ là "không tự động gọi LLM khi trang load" — một action POST do ngư
 bấm là cùng loại thao tác với `scanner risk`/`scanner brief` chạy qua CLI, chỉ khác
 kênh kích hoạt; rule 11 đã cập nhật lại đúng ý này trong CLAUDE.md cùng commit."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,9 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from scanner.core.config import get_settings
 from scanner.core.db import get_sessionmaker, session_scope
 from scanner.core.log import get_logger
-from scanner.core.models import Candidate
+from scanner.core.models import RISK_TIERS, Candidate
 from scanner.core.models import DesignBrief as DesignBriefRow
 from scanner.core.models import RiskFlag, Seed, Term, TermMetricsDaily, TermObservation
+from scanner.core.seeds import SeedRow, sync_seeds
 from scanner.pipeline.brief import (
     DEFAULT_PRODUCT_PRESET,
     PRODUCT_PRESETS,
@@ -97,6 +99,82 @@ async def top_terms_page(
     return templates.TemplateResponse(
         request, "top_terms.html", {"rows": rows, "date": target_date, "limit": limit}
     )
+
+
+# ---------------------------------------------------------------------------
+# /seeds — xem + thêm seed thủ công (nạp file data/seed_keywords.json vẫn là cách
+# nạp hàng loạt chính; trang này để thêm nhanh 1 seed mới phát hiện được mà không cần
+# sửa JSON + chạy lại CLI)
+# ---------------------------------------------------------------------------
+
+
+async def distinct_seed_niches(session: AsyncSession) -> list[str]:
+    rows = (await session.execute(select(Seed.niche).distinct())).scalars()
+    return sorted(set(rows))
+
+
+async def seeds_summary(session: AsyncSession) -> list[dict[str, Any]]:
+    stmt = (
+        select(Seed.niche, Seed.risk_tier, func.count().label("n"))
+        .group_by(Seed.niche, Seed.risk_tier)
+        .order_by(Seed.niche)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [dict(r._mapping) for r in rows]
+
+
+async def recent_seeds(session: AsyncSession, limit: int = 30) -> Sequence[Seed]:
+    return (
+        await session.execute(select(Seed).order_by(Seed.id.desc()).limit(limit))
+    ).scalars().all()
+
+
+@app.get("/seeds", response_class=HTMLResponse)
+async def seeds_page(request: Request) -> HTMLResponse:
+    async with get_sessionmaker()() as session:
+        niches = await distinct_seed_niches(session)
+        summary = await seeds_summary(session)
+        recent = await recent_seeds(session)
+    return templates.TemplateResponse(
+        request,
+        "seeds.html",
+        {"niches": niches, "summary": summary, "recent": recent, "risk_tiers": list(RISK_TIERS)},
+    )
+
+
+@app.post("/seeds")
+async def add_seed_action(
+    seed: str = Form(...),
+    niche: str = Form(...),
+    risk_tier: str = Form(...),
+    sub_niche: str = Form(""),
+    personalized: bool = Form(False),
+    intent: str = Form(""),
+    peak_months: str = Form(""),
+    note: str = Form(""),
+) -> RedirectResponse:
+    seed_clean = seed.strip()
+    niche_clean = niche.strip()
+    if not seed_clean or not niche_clean:
+        return RedirectResponse(url="/seeds?error=thiếu+seed+hoặc+niche", status_code=303)
+    if risk_tier not in RISK_TIERS:
+        return RedirectResponse(url="/seeds?error=risk_tier+không+hợp+lệ", status_code=303)
+    months = tuple(
+        int(m) for m in peak_months.replace(" ", "").split(",") if m.strip().isdigit()
+    )
+    row = SeedRow(
+        seed=seed_clean,
+        niche=niche_clean,
+        risk_tier=risk_tier,
+        sub_niche=sub_niche.strip() or None,
+        personalized=personalized,
+        intent=intent.strip() or None,
+        peak_months=months,
+        note=note.strip() or None,
+    )
+    async with session_scope() as session:
+        await sync_seeds(session, [row])
+    return RedirectResponse(url="/seeds", status_code=303)
 
 
 async def distinct_niches(session: AsyncSession) -> list[str]:

@@ -10,14 +10,14 @@ def rows(seed_file: Path) -> list[SeedRow]:
     return parse_seed_file(seed_file)
 
 
-def test_loads_209_seeds(rows: list[SeedRow]) -> None:
-    assert len(rows) == 209
+def test_loads_259_seeds(rows: list[SeedRow]) -> None:
+    assert len(rows) == 259  # 209 gốc + 50 funny_quote
 
 
 def test_core_and_expansion_split(rows: list[SeedRow]) -> None:
     core = [r for r in rows if r.is_core]
     assert len(core) == 150
-    assert len(rows) - len(core) == 59
+    assert len(rows) - len(core) == 109  # 59 gốc + 50 funny_quote
     assert {r.niche for r in core} == set(CORE_NICHES)
 
 
@@ -33,6 +33,7 @@ def test_expansion_tiers_match_group_risk(rows: list[SeedRow]) -> None:
     assert tiers["occupation_humor"] == "T1"
     assert tiers["hobby_humor"] == "T1"
     assert tiers["general_humor"] == "T1"
+    assert tiers["funny_quote"] == "T1"
     assert tiers["pop_culture"] == "T2"
     assert tiers["political_civic"] == "T3"
 
