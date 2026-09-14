@@ -31,11 +31,19 @@ mà LLM sinh ra — LLM có thể tự đưa vào một cụm dính bản quyề
 
 ### Lớp 2 — USPTO
 
-- Tra exact phrase và bản đã chuẩn hoá
+- Tra exact phrase và bản đã chuẩn hoá — **tra local index** (bảng `uspto_trademarks`,
+  xem `pipeline/uspto_index.py`), KHÔNG gọi live API. Live API (`api.uspto.gov`) và cả
+  trang browse bulk data (`data.uspto.gov`) đòi tài khoản USPTO.gov + MFA kể từ
+  2026-06-18 — xác nhận thật, không phải đoán. Local index nạp từ file bulk XML chính
+  thức ("Trademark Full Text XML Data") tự tải không cần tài khoản, qua lệnh
+  `scanner uspto-index --file ...`.
 - Lọc theo class 25 (hàng may mặc); thêm class 21 và 20 nếu bán mug và đồ gỗ
-- Cache kết quả 30 ngày trong `term_enrichment`
+- Cache kết quả 30 ngày (dùng `risk_flags`, xem ghi chú trong `pipeline/risk.py`)
 - Trạng thái LIVE → `block`. Trạng thái DEAD → `info`, vẫn cho qua nhưng ghi log.
-- API lỗi hoặc timeout → `review`
+- Lỗi tra cứu (DB lỗi) → `review`. **Không tìm thấy match trong index cũng phải
+  `review`, KHÔNG được coi là DEAD/pass**, trừ khi operator tự xác nhận đã nạp đủ toàn
+  bộ bulk data (`USPTO_INDEX_COVERAGE_COMPLETE=true`) — index mới nạp một phần thì
+  "không tìm thấy" không phải bằng chứng nhãn hiệu không tồn tại.
 
 ### Lớp 3 — LLM phân loại nguồn gốc
 
@@ -95,5 +103,6 @@ hiển thị rõ brief này sẽ đi về store nào.
 
 - Bộ 20 cụm đã biết là dính nhãn hiệu: hệ thống bắt được ≥ 18
 - Bộ 20 cụm generic vô hại: false positive ≤ 4
-- USPTO API trả 500 → term rơi vào `review`, khẳng định không có đường nào ra `pass`
+- USPTO không tìm thấy match trong local index và index chưa xác nhận phủ đủ → term
+  rơi vào `review`, khẳng định không có đường nào ra `pass`
 - Term T3 → không tồn tại code path nào cho phép export mà `approved_by IS NULL`

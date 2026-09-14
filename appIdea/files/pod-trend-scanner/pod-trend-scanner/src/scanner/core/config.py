@@ -17,7 +17,11 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://scanner:scanner@localhost:5432/scanner"
     anthropic_api_key: str | None = None
-    uspto_api_key: str | None = None
+    # Local trademark index (pipeline/uspto_index.py) thay live API — xem
+    # docs/RISK_POLICY.md Lớp 2. Set True chỉ khi đã tự xác nhận nạp ĐỦ toàn bộ bộ
+    # bulk data ("Trademark Full Text XML Data") vào bảng uspto_trademarks; thiếu xác
+    # nhận này, "không tìm thấy match" vẫn phải rơi vào "review" (fail-closed).
+    uspto_index_coverage_complete: bool = False
     log_level: str = "INFO"
     collect_country: str = "US"
     http_timeout_seconds: float = 15.0

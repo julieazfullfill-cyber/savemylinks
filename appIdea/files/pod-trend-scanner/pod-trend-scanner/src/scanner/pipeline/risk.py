@@ -7,12 +7,12 @@
 
 Bốn lớp (chi tiết xem RISK_POLICY.md):
     1. Blocklist regex — data/blocklist.yaml, rẻ/nhanh, không cần mạng.
-    2. USPTO — tra exact phrase. **Endpoint CHƯA xác minh được bằng request thật**:
-       tmsearch.uspto.gov có AWS WAF JS-challenge chặn hoàn toàn HTTP đơn giản (đã thử
-       thật, không phải đoán — xem docs/RISK_POLICY.md). Không có USPTO_API_KEY trong
-       phiên build này nên không verify được endpoint có key. Vì thiết kế fail-closed,
-       endpoint sai/không key vẫn đúng hành vi an toàn (rơi vào "review"), nhưng cần
-       xác nhận lại URL thật khi có key.
+    2. USPTO — tra local index (bảng `uspto_trademarks`), KHÔNG gọi live API. Live API
+       (api.uspto.gov) và cả trang browse bulk data (data.uspto.gov) đòi tài khoản
+       USPTO.gov + MFA kể từ 2026-06-18 (xác nhận thật qua Playwright, không phải
+       đoán). Thay vào đó nạp bulk data XML chính thức ("Trademark Full Text XML
+       Data") bằng `pipeline/uspto_index.py` rồi tra local. Xem chi tiết fail-closed
+       khi index chưa đủ phủ ở docstring `check_uspto` bên dưới.
     3. LLM phân loại nguồn gốc — gọi thẳng Anthropic Messages API qua httpx (không
        thêm SDK mới, rule "hỏi trước khi thêm dependency"). Không có ANTHROPIC_API_KEY
        trong phiên build này -> luôn "review", đúng fail-closed.
@@ -48,7 +48,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from scanner.core.config import get_settings
 from scanner.core.log import get_logger
-from scanner.core.models import Candidate, RiskFlag, Seed, Term, TermObservation
+from scanner.core.models import (
+    Candidate,
+    RiskFlag,
+    Seed,
+    Term,
+    TermObservation,
+    UsptoTrademark,
+)
 from scanner.core.normalize import normalize
 
 log = get_logger(__name__)
@@ -177,56 +184,91 @@ async def _uspto_from_cache(session: AsyncSession, term_id: int) -> USPTOResult 
     return USPTOResult(verdict=verdict, evidence={**row.evidence, "from_cache": True})
 
 
-def parse_uspto_response(data: Any) -> USPTOResult:
-    """Thuần, test được offline với fixture tự dựng — xem cảnh báo về endpoint chưa
-    xác minh ở docstring module. Kỳ vọng `data` là list các trademark record, mỗi
-    record có `status` ("LIVE"/"DEAD") và `classes` (list mã lớp 2-3 chữ số)."""
-    if not isinstance(data, list):
-        return USPTOResult(verdict="review", evidence={"reason": "response không phải list"})
-    relevant = [
-        r
-        for r in data
-        if isinstance(r, dict)
-        and any(str(c).zfill(3) in USPTO_TRADEMARK_CLASSES for c in (r.get("classes") or []))
-    ]
-    live = [r for r in relevant if str(r.get("status", "")).upper() == "LIVE"]
-    if live:
-        return USPTOResult(
-            verdict="block", evidence={"status": "LIVE", "matches": live[:5]}
-        )
-    if relevant:
-        return USPTOResult(verdict="pass", evidence={"status": "DEAD", "matches": relevant[:5]})
-    return USPTOResult(verdict="pass", evidence={"status": "NONE"})
+def _matches_relevant_class(row: UsptoTrademark) -> bool:
+    classes = set(row.us_classes) | set(row.intl_classes)
+    return any(c in USPTO_TRADEMARK_CLASSES for c in classes)
 
 
-async def check_uspto(
-    session: AsyncSession, term_id: int, term_text: str, client: httpx.AsyncClient | None = None
-) -> USPTOResult:
+async def _lookup_local_index(session: AsyncSession, term_norm: str) -> list[UsptoTrademark]:
+    """Tra "exact phrase và bản đã chuẩn hoá" (RISK_POLICY.md Lớp 2) trên bảng local
+    `uspto_trademarks`: match `mark_norm` (đã qua cùng hàm normalize() với term) —
+    tương đương so cả hai theo cùng chuẩn hoá vì mark_norm gốc cũng đi qua normalize()
+    khi nạp (pipeline/uspto_index.py)."""
+    rows = (
+        await session.execute(select(UsptoTrademark).where(UsptoTrademark.mark_norm == term_norm))
+    ).scalars().all()
+    return [r for r in rows if _matches_relevant_class(r)]
+
+
+async def check_uspto(session: AsyncSession, term_id: int, term_text: str) -> USPTOResult:
+    """Tra local index thay live API (xem docstring module + pipeline/uspto_index.py).
+
+    Fail-closed khi KHÔNG tìm thấy match: "không tìm thấy" chỉ đáng tin là "DEAD/NONE"
+    (-> pass) khi index đã nạp ĐỦ toàn bộ bulk data
+    (`settings.uspto_index_coverage_complete=True`, operator tự xác nhận thủ công).
+    Chưa xác nhận đủ phủ -> "không tìm thấy" vẫn là "review", vì absence of evidence
+    trong một index CHƯA ĐẦY ĐỦ không phải evidence of absence.
+    """
     cached = await _uspto_from_cache(session, term_id)
     if cached is not None:
         return cached
 
-    settings = get_settings()
-    if not settings.uspto_api_key:
-        return USPTOResult(verdict="review", evidence={"reason": "USPTO_API_KEY chưa cấu hình"})
-
     norm, _ = normalize(term_text)
-    owns_client = client is None
-    http_client = client or httpx.AsyncClient(timeout=10.0)
     try:
-        response = await http_client.get(
-            "https://api.uspto.gov/trademark/v1/search",
-            params={"q": term_text, "qNorm": norm},
-            headers={"X-API-KEY": settings.uspto_api_key},
-        )
-        response.raise_for_status()
-        return parse_uspto_response(response.json())
-    except Exception as exc:  # noqa: BLE001 - API lỗi/timeout PHẢI rơi vào review, không raise
-        log.warning("risk.uspto_failed", term=term_text, error=str(exc))
+        matches = await _lookup_local_index(session, norm)
+    except Exception as exc:  # noqa: BLE001 - lỗi DB PHẢI rơi vào review, không raise
+        log.warning("risk.uspto_local_lookup_failed", term=term_text, error=str(exc))
         return USPTOResult(verdict="review", evidence={"reason": str(exc)})
-    finally:
-        if owns_client:
-            await http_client.aclose()
+
+    live = [m for m in matches if m.status_category == "live"]
+    if live:
+        return USPTOResult(
+            verdict="block",
+            evidence={
+                "status": "LIVE",
+                "matches": [
+                    {
+                        "serial_number": m.serial_number,
+                        "mark_identification": m.mark_identification,
+                        "status_code": m.status_code,
+                    }
+                    for m in live[:5]
+                ],
+            },
+        )
+
+    unknown = [m for m in matches if m.status_category == "unknown"]
+    if unknown:
+        return USPTOResult(
+            verdict="review",
+            evidence={
+                "reason": "status_code không rõ LIVE/DEAD",
+                "matches": [
+                    {"serial_number": m.serial_number, "status_code": m.status_code}
+                    for m in unknown[:5]
+                ],
+            },
+        )
+
+    if matches:  # còn lại toàn bộ đều "dead"
+        return USPTOResult(
+            verdict="pass",
+            evidence={
+                "status": "DEAD",
+                "matches": [
+                    {"serial_number": m.serial_number, "status_code": m.status_code}
+                    for m in matches[:5]
+                ],
+            },
+        )
+
+    settings = get_settings()
+    if settings.uspto_index_coverage_complete:
+        return USPTOResult(verdict="pass", evidence={"status": "NONE"})
+    return USPTOResult(
+        verdict="review",
+        evidence={"reason": "không tìm thấy trong local index, nhưng index chưa xác nhận phủ đủ"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +474,7 @@ async def run_risk_gate(
             verdicts.append("review")  # T0 chỉ auto-approve nếu KHÔNG có danh từ riêng
 
     if 2 in required:
-        result2 = await check_uspto(session, term_id, term.text_norm, http_client)
+        result2 = await check_uspto(session, term_id, term.text_norm)
         await _write_flag(session, term_id, "uspto", result2.verdict, result2.evidence)
         verdicts.append(result2.verdict)
         layers_run.append(2)

@@ -399,12 +399,12 @@ Postgres. Một mục để lại có chủ đích cho Phase 4 — xem bên dư�
 | Hạng mục | Trạng thái |
 |---|---|
 | Lớp 1 — blocklist (`data/blocklist.yaml` + `pipeline/risk.py`) | xong, 20/20 cụm dính nhãn hiệu bắt được, 0/20 false positive |
-| Lớp 2 — USPTO | xong về mặt fail-closed; **endpoint chưa xác minh được** (WAF chặn) — xem ghi chú |
+| Lớp 2 — USPTO | xong, tra **local index** (`uspto_trademarks`) nạp từ bulk data XML thật — xem ghi chú |
 | Lớp 3 — LLM origin classification | xong về mặt fail-closed; **chưa gọi được LLM thật** (thiếu ANTHROPIC_API_KEY) |
 | Lớp 4 — hàng đợi chờ duyệt | xong — trang `/review` (đọc), `scanner approve` (CLI), enforce T2/T3 cứng |
 | `risk_flags` + enforce fail-closed | risk_flags: xong. Enforce ở `pipeline/brief.py`: **để lại cho Phase 4** — brief.py chưa tồn tại, xem ghi chú |
 | `scheduler.py` | thêm job risk (04:00 UTC) |
-| Test | 215 passed (offline + Postgres thật) |
+| Test | 234 passed (offline + Postgres thật) |
 | `mypy` strict | sạch, 30 file |
 
 ### Acceptance đã verify
@@ -427,8 +427,10 @@ scanner approve --candidate-id 2 --by cong@example.com
 - **"Term T3 không bao giờ đạt approved mà không có approved_by":** verify thật (trên)
   + test. `approve_candidate()` là **điểm duy nhất** được set `status='approved'` trong
   toàn bộ codebase — không có đường tắt nào khác ghi được vào cột đó.
-- **"USPTO API down → review, không rơi vào pass":** `tests/test_risk_uspto.py` — mock
-  500, timeout, JSON hỏng, đều ra `review`. Không có key cũng `review` (verify thật).
+- **"USPTO không tìm thấy match → review, không rơi vào pass" khi index chưa xác nhận
+  phủ đủ:** `tests/test_risk_uspto.py` — verify thật trên Postgres với dữ liệu THẬT
+  (42.460 case-file trích từ bulk XML người dùng tự tải từ USPTO, nạp qua
+  `scanner uspto-index`, xem mục "Hai việc thật sự chưa xong" bên dưới).
 - **Bộ 20 cụm dính nhãn hiệu bắt được ≥ 18:** verify **20/20**, 0 false positive trên
   bộ 20 cụm generic — vượt xa yêu cầu.
 
@@ -456,13 +458,21 @@ cũ hay mới" đều phải chặn). Verify: bắt được cả câu chưa t�
 
 ### Hai việc thật sự chưa xong — cần bạn hoặc thời gian
 
-1. **Endpoint USPTO chưa xác minh bằng request thật.** `tmsearch.uspto.gov` (giao diện
-   mới) có AWS WAF JS-challenge chặn hoàn toàn HTTP đơn giản — đã thử thật (curl thấy
-   `challenge.js` từ `edge.sdk.awswaf.com`), không phải đoán. Code hiện dùng endpoint
-   theo tài liệu công khai của USPTO Developer Hub (`api.uspto.gov`), **chưa xác nhận
-   được URL này đúng** vì không có `USPTO_API_KEY` để test thật. An toàn về mặt
-   fail-closed (URL sai vẫn chỉ rơi vào "review", không bao giờ "pass" sai), nhưng cần
-   key thật + xác nhận URL trước khi tin dữ liệu USPTO là chính xác.
+1. **Local USPTO index mới phủ một phần rất nhỏ dữ liệu.** `data.uspto.gov` (browse
+   bulk data) và `api.uspto.gov` (live API) đều bắt buộc tài khoản USPTO.gov + MFA kể
+   từ 2026-06-18 — xác nhận thật qua Playwright, không phải đoán, nên Lớp 2 chuyển
+   sang tra **local index** dựng từ file bulk XML "Trademark Full Text XML Data" mà
+   người dùng tự tải trực tiếp từ USPTO (không cần key/tài khoản). Nạp bằng:
+   ```
+   scanner uspto-index --file path/to/apcXXXXXXXX-XXXXXXXX-N.xml
+   ```
+   Bộ dữ liệu đầy đủ ~21GB, chia nhiều file; hiện mới nạp **1 file (~395MB, 42.460
+   case-file)**, tức một phần nhỏ so với tổng số ~12-15 triệu trademark case file thật
+   sự tồn tại. Vì vậy `USPTO_INDEX_COVERAGE_COMPLETE` mặc định `false`, và thiết kế
+   fail-closed coi "không tìm thấy match trong index" là `review` (không phải `pass`)
+   cho tới khi người vận hành tự xác nhận đã nạp đủ toàn bộ dữ liệu và set biến đó
+   `true`. Muốn Lớp 2 tự động "pass" nhiều hơn (đỡ tồn đọng ở hàng chờ duyệt) thì cần
+   nạp thêm các file còn lại của bộ 21GB.
 2. **Chưa gọi được LLM thật.** Không có `ANTHROPIC_API_KEY` trong `.env` — lớp 3 luôn
    rơi vào "review" (đúng thiết kế, nhưng nghĩa là mọi T2/T3 hiện đều cần người duyệt
    thủ công, không có term nào tự động qua được lớp 3 để test "generic → pass" thật).

@@ -1,5 +1,6 @@
 """Integration test cho run_risk_gate_for_pending_candidates(). Cần Postgres đã
-migrate; không có thì skip. Không gọi mạng thật (không có USPTO/ANTHROPIC key)."""
+migrate; không có thì skip. Không gọi mạng thật (không có ANTHROPIC key, local USPTO
+index rỗng/chưa xác nhận phủ đủ)."""
 
 from decimal import Decimal
 
@@ -17,8 +18,8 @@ pytestmark = pytest.mark.db
 @pytest.fixture(autouse=True)
 def no_external_keys(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     get_settings.cache_clear()
-    monkeypatch.delenv("USPTO_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("USPTO_INDEX_COVERAGE_COMPLETE", "false")
     yield
     get_settings.cache_clear()
 

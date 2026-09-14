@@ -152,6 +152,48 @@ class Occasion(Base):
     niches: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
 
 
+class UsptoTrademark(Base):
+    """Index nội bộ dựng từ bulk data XML USPTO ("Trademark Applications Daily"),
+    xem pipeline/uspto_index.py. Thay cho live API (cần tài khoản USPTO.gov + MFA,
+    không khả dụng — xem docs/RISK_POLICY.md phần Lớp 2)."""
+
+    __tablename__ = "uspto_trademarks"
+    __table_args__ = (
+        Index("ix_uspto_trademarks_mark_norm", "mark_norm"),
+        Index(
+            "ix_uspto_trademarks_us_classes", "us_classes", postgresql_using="gin"
+        ),
+        Index(
+            "ix_uspto_trademarks_intl_classes", "intl_classes", postgresql_using="gin"
+        ),
+    )
+
+    serial_number: Mapped[str] = mapped_column(Text, primary_key=True)
+    registration_number: Mapped[str | None] = mapped_column(Text)
+    mark_identification: Mapped[str | None] = mapped_column(Text)
+    mark_norm: Mapped[str] = mapped_column(Text, nullable=False)
+    status_code: Mapped[str] = mapped_column(Text, nullable=False)
+    status_category: Mapped[str] = mapped_column(Text, nullable=False)  # live|dead|unknown
+    status_date: Mapped[date_t | None] = mapped_column(Date)
+    filing_date: Mapped[date_t | None] = mapped_column(Date)
+    registration_date: Mapped[date_t | None] = mapped_column(Date)
+    us_classes: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
+    intl_classes: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
+    source_file: Mapped[str] = mapped_column(Text, nullable=False)
+    loaded_at: Mapped[datetime] = mapped_column(TZ, nullable=False, server_default=func.now())
+
+
+class UsptoBulkFile(Base):
+    """Manifest các file bulk XML đã nạp — dùng để biết index đang phủ tới đâu (xem
+    settings.uspto_index_coverage_complete, pipeline/risk.py)."""
+
+    __tablename__ = "uspto_bulk_files"
+
+    filename: Mapped[str] = mapped_column(Text, primary_key=True)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    loaded_at: Mapped[datetime] = mapped_column(TZ, nullable=False, server_default=func.now())
+
+
 class RiskFlag(Base):
     __tablename__ = "risk_flags"
 
@@ -204,4 +246,6 @@ __all__ = [
     "TermEnrichment",
     "TermMetricsDaily",
     "TermObservation",
+    "UsptoBulkFile",
+    "UsptoTrademark",
 ]

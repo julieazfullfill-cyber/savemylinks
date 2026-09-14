@@ -1,7 +1,7 @@
 """Integration test cho pipeline/risk.py orchestration. Cần Postgres đã migrate;
-không có thì skip. Không gọi mạng thật (không cấu hình USPTO_API_KEY/ANTHROPIC_API_KEY
-trong test này — verify đúng nhánh fail-closed thật sự sẽ chạy trong production nếu
-chưa có key).
+không có thì skip. Không gọi mạng thật (không cấu hình ANTHROPIC_API_KEY, và local
+USPTO index rỗng/chưa xác nhận phủ đủ trong test này — verify đúng nhánh fail-closed
+thật sự sẽ chạy trong production khi thiếu dữ liệu).
 """
 
 from datetime import UTC, datetime
@@ -33,8 +33,8 @@ def no_external_keys(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untype
     """Đảm bảo test chạy đúng nhánh fail-closed thật (không lỡ có key thật trong env
     máy chạy CI/dev), không phụ thuộc môi trường bên ngoài."""
     get_settings.cache_clear()
-    monkeypatch.delenv("USPTO_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("USPTO_INDEX_COVERAGE_COMPLETE", "false")
     yield
     get_settings.cache_clear()
 

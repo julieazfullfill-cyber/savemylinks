@@ -1,155 +1,122 @@
-"""Test Lớp 2 (USPTO) — offline, không gọi mạng thật.
+"""Test Lớp 2 (USPTO) — tra local index (bảng uspto_trademarks), không gọi mạng thật.
+Cần Postgres đã migrate; không có thì skip. Xem docstring pipeline/risk.py +
+pipeline/uspto_index.py cho lý do dùng local index thay live API (tài khoản
+USPTO.gov + MFA bắt buộc, đã xác nhận thật, không phải đoán)."""
 
-**Endpoint chưa xác minh bằng request thật** (WAF chặn discovery — xem docstring
-pipeline/risk.py) — fixture ở đây là dữ liệu TỰ DỰNG theo cấu trúc hợp lý (status
-LIVE/DEAD + classes), không phải response thật. Acceptance bắt buộc mà test này verify
-KHÔNG phụ thuộc vào cấu trúc response chính xác: "USPTO API down -> review, không bao
-giờ pass" — đúng dù endpoint có đổi thế nào, vì fail-closed nằm ở tầng try/except, không
-phụ thuộc parse đúng hay sai.
-"""
+from datetime import date
 
-from typing import Any
-
-import httpx
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from scanner.core.config import get_settings
-from scanner.pipeline.risk import check_uspto, parse_uspto_response
+from scanner.core.models import UsptoTrademark
+from scanner.pipeline.risk import check_uspto
+
+pytestmark = pytest.mark.db
 
 
-def test_parse_live_trademark_in_relevant_class_blocks() -> None:
-    data: list[dict[str, Any]] = [{"status": "LIVE", "classes": ["025"]}]
-    result = parse_uspto_response(data)
+@pytest.fixture(autouse=True)
+def reset_settings():  # type: ignore[no-untyped-def]
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def _add_mark(
+    session: AsyncSession,
+    serial: str,
+    mark_norm: str,
+    status_code: str,
+    status_category: str,
+    us_classes: list[str] | None = None,
+) -> None:
+    session.add(
+        UsptoTrademark(
+            serial_number=serial,
+            mark_identification=mark_norm,
+            mark_norm=mark_norm,
+            status_code=status_code,
+            status_category=status_category,
+            us_classes=us_classes or ["025"],
+            intl_classes=[],
+            source_file="test-fixture",
+            filing_date=date(2026, 1, 1),
+        )
+    )
+    await session.commit()
+
+
+async def test_live_match_in_relevant_class_blocks(db_session: AsyncSession) -> None:
+    await _add_mark(db_session, "1", "grumpy cat shirt", "700", "live")
+
+    result = await check_uspto(db_session, term_id=1, term_text="grumpy cat shirt")
+
     assert result.verdict == "block"
+    assert result.evidence["status"] == "LIVE"
 
 
-def test_parse_dead_trademark_passes_but_logs() -> None:
-    data: list[dict[str, Any]] = [{"status": "DEAD", "classes": ["025"]}]
-    result = parse_uspto_response(data)
+async def test_dead_match_passes_but_logs(db_session: AsyncSession) -> None:
+    await _add_mark(db_session, "2", "old defunct brand", "606", "dead")
+
+    result = await check_uspto(db_session, term_id=1, term_text="old defunct brand")
+
     assert result.verdict == "pass"
     assert result.evidence["status"] == "DEAD"
 
 
-def test_parse_no_matching_class_passes() -> None:
-    # Đăng ký thật nhưng ở lớp không liên quan (ví dụ lớp 9 - điện tử) thì không chặn.
-    data: list[dict[str, Any]] = [{"status": "LIVE", "classes": ["009"]}]
-    result = parse_uspto_response(data)
+async def test_match_in_irrelevant_class_is_ignored(db_session: AsyncSession) -> None:
+    # Đăng ký thật nhưng lớp không liên quan (điện tử, 009) -> không tính.
+    await _add_mark(
+        db_session, "3", "some electronics brand", "700", "live", us_classes=["009"]
+    )
+
+    result = await check_uspto(db_session, term_id=1, term_text="some electronics brand")
+
+    # Không match lớp liên quan -> coi như không tìm thấy -> review (index chưa xác
+    # nhận phủ đủ, KHÔNG được tự suy ra "pass" chỉ vì record duy nhất tìm được bị lọc).
+    assert result.verdict == "review"
+
+
+async def test_unknown_status_category_is_review_not_pass(db_session: AsyncSession) -> None:
+    await _add_mark(db_session, "4", "ambiguous status term", "625", "unknown")
+
+    result = await check_uspto(db_session, term_id=1, term_text="ambiguous status term")
+
+    assert result.verdict == "review"
+
+
+async def test_no_match_and_incomplete_coverage_is_review_not_pass(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("USPTO_INDEX_COVERAGE_COMPLETE", "false")
+    get_settings.cache_clear()
+
+    result = await check_uspto(db_session, term_id=1, term_text="term nowhere in index")
+
+    # Acceptance cốt lõi: absence of evidence trong index CHƯA đầy đủ không phải
+    # evidence of absence -- không bao giờ tự suy ra "pass" khi chưa xác nhận phủ đủ.
+    assert result.verdict == "review"
+
+
+async def test_no_match_and_confirmed_full_coverage_passes(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("USPTO_INDEX_COVERAGE_COMPLETE", "true")
+    get_settings.cache_clear()
+
+    result = await check_uspto(db_session, term_id=1, term_text="term nowhere in index")
+
     assert result.verdict == "pass"
+    assert result.evidence["status"] == "NONE"
 
 
-def test_parse_empty_results_passes() -> None:
-    assert parse_uspto_response([]).verdict == "pass"
-
-
-def test_parse_malformed_response_is_review_not_pass() -> None:
-    # response không đúng dạng list -> review, KHÔNG được coi là "không có kết quả -> pass".
-    assert parse_uspto_response({"unexpected": "shape"}).verdict == "review"
-    assert parse_uspto_response(None).verdict == "review"
-
-
-async def test_no_api_key_configured_falls_back_to_review(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_exact_normalized_phrase_matches_regardless_of_case_punctuation(
+    db_session: AsyncSession,
 ) -> None:
-    get_settings.cache_clear()
-    monkeypatch.delenv("USPTO_API_KEY", raising=False)
+    # mark_norm được nạp qua cùng normalize() với term -- "Grumpy Cat!" và "grumpy cat"
+    # phải khớp nhau qua bản đã chuẩn hoá.
+    await _add_mark(db_session, "5", "grumpy cat", "700", "live")
 
-    class FakeSession:
-        async def scalar(self, *a: Any, **k: Any) -> None:
-            return None
+    result = await check_uspto(db_session, term_id=1, term_text="Grumpy Cat!")
 
-        async def execute(self, *a: Any, **k: Any) -> Any:
-            class R:
-                def scalar_one_or_none(self) -> None:
-                    return None
-
-            return R()
-
-    result = await check_uspto(FakeSession(), term_id=1, term_text="some term")  # type: ignore[arg-type]
-    get_settings.cache_clear()
-
-    assert result.verdict == "review"
-    assert "USPTO_API_KEY" in result.evidence["reason"]
-
-
-async def test_api_error_500_falls_back_to_review_not_pass(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Acceptance: "USPTO API trả 500 -> term rơi vào review, khẳng định không có
-    # đường nào ra pass".
-    get_settings.cache_clear()
-    monkeypatch.setenv("USPTO_API_KEY", "fake-key-for-test")
-
-    class FakeSession:
-        async def scalar(self, *a: Any, **k: Any) -> None:
-            return None
-
-        async def execute(self, *a: Any, **k: Any) -> Any:
-            class R:
-                def scalar_one_or_none(self) -> None:
-                    return None
-
-            return R()
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="internal server error")
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    result = await check_uspto(FakeSession(), term_id=1, term_text="some term", client=client)  # type: ignore[arg-type]
-    await client.aclose()
-    get_settings.cache_clear()
-
-    assert result.verdict == "review"
-
-
-async def test_timeout_falls_back_to_review_not_pass(monkeypatch: pytest.MonkeyPatch) -> None:
-    get_settings.cache_clear()
-    monkeypatch.setenv("USPTO_API_KEY", "fake-key-for-test")
-
-    class FakeSession:
-        async def scalar(self, *a: Any, **k: Any) -> None:
-            return None
-
-        async def execute(self, *a: Any, **k: Any) -> Any:
-            class R:
-                def scalar_one_or_none(self) -> None:
-                    return None
-
-            return R()
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.TimeoutException("timed out")
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    result = await check_uspto(FakeSession(), term_id=1, term_text="some term", client=client)  # type: ignore[arg-type]
-    await client.aclose()
-    get_settings.cache_clear()
-
-    assert result.verdict == "review"
-
-
-async def test_malformed_json_response_falls_back_to_review(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    get_settings.cache_clear()
-    monkeypatch.setenv("USPTO_API_KEY", "fake-key-for-test")
-
-    class FakeSession:
-        async def scalar(self, *a: Any, **k: Any) -> None:
-            return None
-
-        async def execute(self, *a: Any, **k: Any) -> Any:
-            class R:
-                def scalar_one_or_none(self) -> None:
-                    return None
-
-            return R()
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text="not json at all {{{")
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    result = await check_uspto(FakeSession(), term_id=1, term_text="some term", client=client)  # type: ignore[arg-type]
-    await client.aclose()
-    get_settings.cache_clear()
-
-    assert result.verdict == "review"
+    assert result.verdict == "block"

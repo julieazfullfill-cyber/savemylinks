@@ -19,6 +19,8 @@ TABLES = (
     "seeds",
     "sources",
     "occasions",
+    "uspto_trademarks",
+    "uspto_bulk_files",
 )
 
 

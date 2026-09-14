@@ -68,6 +68,8 @@ src/scanner/
     import_etsy.py    # CSV importer (KHÔNG scraper) -> source.kind='import'
     score.py          # momentum + opportunity (2 trục riêng) -> candidates
     risk.py          # 4 lớp risk gate, fail-closed — xem docs/RISK_POLICY.md
+    uspto_index.py   # ETL bulk XML USPTO -> bảng uspto_trademarks (Lớp 2 dùng local index, không có live API)
+    uspto_status_codes.py  # Table 1 Trademark Status Codes chính thức + phân loại LIVE/DEAD/UNKNOWN
     brief.py         # LLM sinh design_brief
     render.py        # brief -> image prompt (code thuần, KHÔNG dùng LLM)
   web/
@@ -145,6 +147,7 @@ uv run scanner enrich          # top term theo accel -> term_enrichment (top-100
 uv run scanner score           # momentum + opportunity -> candidates
 uv run scanner calendar --niche wedding   # seed nào nên sản xuất hôm nay
 uv run scanner import-etsy --file export.csv   # CSV từ eRank/Everbee/Alura, KHÔNG scraper
+uv run scanner uspto-index --file apcXXXXXXXX-XXXXXXXX-N.xml   # nạp bulk XML USPTO -> uspto_trademarks (Lớp 2 risk)
 uv run scanner risk            # 4 lớp risk gate cho candidate mới, ghi risk_flags
 uv run scanner approve --candidate-id N --by ai_đó   # T2/T3 bắt buộc --by
 uv run uvicorn scanner.web.app:app --reload   # / top term, /candidates scatter, /review hàng đợi duyệt

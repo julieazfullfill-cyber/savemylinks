@@ -28,6 +28,7 @@ from scanner.pipeline.risk import (
 from scanner.pipeline.metrics import recompute_history, run_metrics
 from scanner.pipeline.score import DEFAULT_TOP_N as SCORE_DEFAULT_TOP_N
 from scanner.pipeline.score import score_candidates
+from scanner.pipeline.uspto_index import load_bulk_file
 
 # Console Windows mặc định là cp1252, help và log tiếng Việt sẽ vỡ nếu không ép UTF-8.
 for _stream in (sys.stdout, sys.stderr):
@@ -307,6 +308,32 @@ def approve(
             await dispose_engine()
 
     typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False))
+
+
+@app.command("uspto-index")
+def uspto_index(
+    file: Annotated[
+        list[Path], typer.Option("--file", help="1+ file XML bulk USPTO, lặp lại được")
+    ],
+) -> None:
+    """Nạp file bulk XML USPTO ("Trademark Applications Daily") vào uspto_trademarks —
+    thay live API (docs/RISK_POLICY.md Lớp 2). Tải file từ
+    https://www.uspto.gov/trademarks/apply/check-status-view-documents/trademark-bulk-data
+    """
+    _setup()
+
+    async def run() -> list[dict[str, int | str]]:
+        try:
+            async with session_scope() as session:
+                results = []
+                for path in file:
+                    stats = await load_bulk_file(session, path)
+                    results.append(stats.as_dict())
+                return results
+        finally:
+            await dispose_engine()
+
+    typer.echo(json.dumps(asyncio.run(run()), ensure_ascii=False, indent=2))
 
 
 @app.command()

@@ -3,6 +3,10 @@ server/.venv/
 **/__pycache__/
 *.pyc
 
+# USPTO bulk trademark XML data (hundreds of MB - nạp bằng
+# `scanner uspto-index --file ...`, không commit vào git)
+appIdea/data/
+
 # Secrets
 server/.env
 
