@@ -82,6 +82,21 @@ docker compose up -d postgres          # nếu dùng Docker
 Nếu đã có `uv` toàn cục thì bỏ tiền tố `./.tooling/Scripts/`, các lệnh trong `CLAUDE.md`
 dùng được nguyên văn.
 
+### Tự khởi động sau khi bật máy
+
+Postgres dev (`F:\pgdev16`) không phải Windows service, nên restart máy là nó tắt luôn,
+kéo theo `scanner schedule` — pipeline bỏ lỡ cả ngày mà không báo gì (đã xảy ra
+2026-10-01). `scripts/autostart.ps1` bật Postgres (port 5433) + `scanner schedule` nếu
+chưa chạy; đăng ký một lần thành task Task Scheduler chạy lúc logon:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\autostart.ps1 -Register
+```
+
+Log ở `logs/autostart.log` và `logs/scheduler_<thời điểm>.log`. Lưu ý: `pg_ctl` phải
+có `-o "-p 5433"` — `postgresql.conf` không set port, mặc định 5432 bị service
+`postgresql-x64-16` chiếm và Windows báo lỗi thành "Permission denied".
+
 ### Phase 0 — acceptance đã verify trên DB thật
 
 Chạy trên Postgres 16.10 local (`F:\pgdev16`, port 5433):
