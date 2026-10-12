@@ -1,0 +1,322 @@
+// Đặc tả giai đoạn 1 CGGroup — https://claude.ai/artifact/EtgCxATpUvTUtKCpJEghnW
+// Quy ước bắt buộc (mục 01):
+//  1. Tiền là BigInt, minor unit (VND = đồng, USD = cent). Không Float/Double.
+//  2. Mỗi số tiền có amount + currency + amountVnd (quy đổi theo tỷ giá ngày giao dịch, lưu cứng).
+//  3. Không xoá bản ghi tài chính: voidedAt/voidedBy, sửa bằng bút toán ngược.
+//  4. Giờ lưu UTC; ngày nghiệp vụ dùng @db.Date riêng.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  KE_TOAN
+  QUAN_LY
+  NHAN_VIEN
+}
+
+enum Currency {
+  VND
+  USD
+}
+
+enum AccountKind {
+  BANK
+  EWALLET
+  PLATFORM
+  CASH
+}
+
+enum Direction {
+  IN
+  OUT
+}
+
+enum ExpenseStatus {
+  DRAFT
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  COGS
+  EXPENSE
+  OTHER
+}
+
+// ───────────────────────── nền tảng ─────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         Role     @default(NHAN_VIEN)
+  active       Boolean  @default(true)
+  /// Bổ sung so với đặc tả: đăng nhập email + mật khẩu (bcrypt).
+  passwordHash String?
+  createdAt    DateTime @default(now())
+}
+
+/// Ghi mọi thay đổi. Không có API xoá — kể cả ADMIN.
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  actorId   String
+  tableName String
+  recordId  String
+  action    String // CREATE | UPDATE | VOID
+  before    Json?
+  after     Json?
+  at        DateTime @default(now())
+
+  @@index([tableName, recordId])
+  @@index([at])
+}
+
+/// Tỷ giá theo ngày. Mọi quy đổi tra bảng này, không hardcode.
+model FxRate {
+  id    Int      @id @default(autoincrement())
+  date  DateTime @db.Date
+  base  Currency
+  quote Currency
+  rate  Decimal  @db.Decimal(18, 6)
+
+  @@unique([date, base, quote])
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  url        String
+  filename   String
+  tableName  String
+  recordId   String
+  uploadedBy String
+  uploadedAt DateTime @default(now())
+
+  @@index([tableName, recordId])
+}
+
+// ───────────────────────── danh mục ─────────────────────────
+
+model LegalEntity {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  name          String
+  kind          String // LLC | HO_KINH_DOANH | CONG_TY_TNHH
+  country       String
+  taxCode       String?
+  renewalDate   DateTime? @db.Date
+  annualCostVnd BigInt?
+  active        Boolean   @default(true)
+
+  cashAccounts CashAccount[]
+}
+
+/// Hệ thống tài khoản nội bộ — 35 tài khoản tự đặt.
+model Account {
+  code  String        @id // "101", "601"…
+  name  String
+  type  AccountType
+  lines JournalLine[]
+}
+
+model ExpenseCategory {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  accountCode String // trỏ về Account.code
+  recurring   Boolean @default(true) // định kỳ hay một lần
+  /// Bổ sung: ngày trong tháng khoản định kỳ đến hạn — để dự báo rơi đúng tuần.
+  dueDay      Int?
+  /// Bổ sung: ngân sách/tháng (VND) — số dự kiến cho dự báo + cảnh báo chi vượt ngân sách.
+  budgetVnd   BigInt?
+  active      Boolean @default(true)
+
+  expenses Expense[]
+  txns     CashTxn[]
+}
+
+model Supplier {
+  id         String  @id @default(cuid())
+  code       String  @unique
+  name       String
+  service    String? // FULFILL | TOOL | DICH_VU…
+  prepaid    Boolean @default(true) // trả trước hay công nợ
+  creditDays Int     @default(0)
+  active     Boolean @default(true)
+
+  bills SupplierBill[]
+}
+
+/// Shop — GĐ1 chỉ cần danh mục, nghiệp vụ đơn hàng để GĐ3.
+model Shop {
+  id       String    @id @default(cuid())
+  code     String    @unique
+  name     String
+  channel  String // ETSY | AMAZON | TIKTOK | WEBSITE
+  entityId String?
+  ownerId  String? // User phụ trách
+  status   String    @default("ACTIVE")
+  openedAt DateTime? @db.Date
+}
+
+// ───────────────────────── tiền & sổ ─────────────────────────
+
+model CashAccount {
+  id        String       @id @default(cuid())
+  code      String       @unique
+  name      String
+  kind      AccountKind
+  currency  Currency
+  entityId  String?
+  entity    LegalEntity? @relation(fields: [entityId], references: [id])
+  glAccount String // Account.code tương ứng
+  active    Boolean      @default(true)
+
+  txns     CashTxn[]
+  balances AccountBalance[]
+}
+
+/// Số dư chốt cuối ngày. 'reserved' là phần sàn đang giam.
+model AccountBalance {
+  id        String      @id @default(cuid())
+  accountId String
+  account   CashAccount @relation(fields: [accountId], references: [id])
+  date      DateTime    @db.Date
+  available BigInt
+  reserved  BigInt      @default(0)
+  releaseOn DateTime?   @db.Date // ngày reserve dự kiến về
+  note      String?
+
+  @@unique([accountId, date])
+}
+
+/// Giao dịch tiền thật. Nguồn duy nhất của số dư.
+model CashTxn {
+  id          String           @id @default(cuid())
+  date        DateTime         @db.Date
+  accountId   String
+  account     CashAccount      @relation(fields: [accountId], references: [id])
+  direction   Direction
+  amount      BigInt // nguyên tệ, minor unit
+  currency    Currency
+  fxRate      Decimal          @db.Decimal(18, 6)
+  amountVnd   BigInt // lưu cứng tại thời điểm ghi
+  categoryId  String?
+  category    ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  supplierId  String?
+  shopId      String?
+  description String
+  journalId   String?          @unique
+  journal     JournalEntry?    @relation(fields: [journalId], references: [id])
+  createdBy   String
+  createdAt   DateTime         @default(now())
+  voidedAt    DateTime?
+  voidedBy    String?
+
+  @@index([date])
+  @@index([accountId, date])
+}
+
+/// Khoản chi có quy trình duyệt. Duyệt xong + chi tiền → sinh CashTxn.
+model Expense {
+  id          String          @id @default(cuid())
+  date        DateTime        @db.Date
+  categoryId  String
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id])
+  supplierId  String?
+  amount      BigInt
+  currency    Currency
+  amountVnd   BigInt
+  description String
+  status      ExpenseStatus   @default(DRAFT)
+  requestedBy String
+  approvedBy  String?
+  approvedAt  DateTime?
+  cashTxnId   String?         @unique
+
+  @@index([status, date])
+}
+
+/// Hoá đơn nhà cung cấp — công nợ phải trả, đẩy vào dự báo.
+model SupplierBill {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  billNo     String?
+  issueDate  DateTime @db.Date
+  dueDate    DateTime @db.Date
+  amount     BigInt
+  currency   Currency
+  amountVnd  BigInt
+  paidVnd    BigInt   @default(0)
+  status     String   @default("OPEN") // OPEN | PARTIAL | PAID
+
+  @@index([dueDate, status])
+}
+
+/// Bút toán. Ràng buộc tổng nợ = tổng có kiểm ở tầng ứng dụng + trigger SQL.
+model JournalEntry {
+  id         String   @id @default(cuid())
+  date       DateTime @db.Date
+  memo       String
+  source     String // CASH_TXN | EXPENSE | OPENING | ADJUST
+  createdBy  String
+  createdAt  DateTime @default(now())
+  reversalOf String?
+
+  lines   JournalLine[]
+  cashTxn CashTxn?
+
+  @@index([date])
+}
+
+model JournalLine {
+  id          String       @id @default(cuid())
+  entryId     String
+  entry       JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountCode String
+  account     Account      @relation(fields: [accountCode], references: [code])
+  debitVnd    BigInt       @default(0)
+  creditVnd   BigInt       @default(0)
+  shopId      String?
+  entityId    String?
+
+  @@index([accountCode])
+}
+
+/// Khoản dự kiến thu/chi do người dùng thêm tay (thuế, khoản bất thường).
+model ForecastItem {
+  id         String    @id @default(cuid())
+  expectedOn DateTime  @db.Date
+  direction  Direction
+  amountVnd  BigInt
+  label      String
+  confidence Int       @default(100) // % chắc chắn
+  recurring  String? // MONTHLY | WEEKLY | null
+
+  @@index([expectedOn])
+}
+
+/// Dữ liệu T4–T10 đọc từ Excel. Chỉ đọc, không vào sổ kép.
+model LegacyPnl {
+  id         Int     @id @default(autoincrement())
+  team       String
+  month      Int
+  year       Int
+  revenueUsd Decimal @db.Decimal(14, 2)
+  expenseUsd Decimal @db.Decimal(14, 2)
+  profitUsd  Decimal @db.Decimal(14, 2)
+
+  @@unique([team, year, month])
+}
