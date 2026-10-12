@@ -320,3 +320,270 @@ model LegacyPnl {
 
   @@unique([team, year, month])
 }
+
+// ===================================================================
+// GIAI ĐOẠN 2 — Nhân sự, chấm công, tiền lương
+// Đặc tả: https://claude.ai/artifact/7sjsZZxEwv4q2PGCoGbo1i
+// Chỉ thêm mới, không sửa model nào của giai đoạn 1.
+// ===================================================================
+
+enum WorkMode {
+  OFFICE
+  ONLINE
+  HYBRID
+}
+
+enum EmployeeStatus {
+  PROBATION
+  OFFICIAL
+  RESIGNED
+}
+
+enum PayrollStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  PAID
+  CLOSED
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Department {
+  id       String       @id @default(cuid())
+  code     String       @unique
+  name     String
+  parentId String?
+  parent   Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  children Department[] @relation("DeptTree")
+  active   Boolean      @default(true)
+
+  employees Employee[]
+}
+
+model Position {
+  id   String @id @default(cuid())
+  code String @unique
+  name String
+
+  employees Employee[]
+}
+
+model Employee {
+  id           String         @id @default(cuid())
+  code         String         @unique // NV01, NV02…
+  fullName     String
+  departmentId String?
+  department   Department?    @relation(fields: [departmentId], references: [id])
+  positionId   String?
+  position     Position?      @relation(fields: [positionId], references: [id])
+  managerId    String?
+  manager      Employee?      @relation("Reports", fields: [managerId], references: [id])
+  reports      Employee[]     @relation("Reports")
+  userId       String?        @unique // nối sang User của GĐ1
+  status       EmployeeStatus @default(PROBATION)
+  /// ONL trong bảng chấm công cũ là thuộc tính của NGƯỜI, không phải của ngày
+  workMode     WorkMode       @default(OFFICE)
+  joinedAt     DateTime       @db.Date
+  leftAt       DateTime?      @db.Date
+  bankAccount  String?
+  bankName     String?
+
+  contracts     EmploymentContract[]
+  attendance    AttendanceDay[]
+  payrollLines  PayrollLine[]
+  leaveBalances LeaveBalance[]
+  leaveRequests LeaveRequest[]
+  kpiTargets    KpiTarget[]
+  kpiResults    KpiResult[]
+
+  @@index([status])
+}
+
+/// Lương thuộc về HỢP ĐỒNG có hiệu lực theo khoảng ngày.
+/// Tăng lương = tạo bản ghi mới, KHÔNG sửa đè (trigger chặn) — nhờ vậy tra được
+/// lương của bất kỳ tháng nào trong quá khứ.
+model EmploymentContract {
+  id                 String    @id @default(cuid())
+  employeeId         String
+  employee           Employee  @relation(fields: [employeeId], references: [id])
+  effectiveFrom      DateTime  @db.Date
+  effectiveTo        DateTime? @db.Date
+  baseSalaryVnd      BigInt // lương cứng
+  allowanceVnd       BigInt    @default(0) // phụ cấp chung
+  mealVnd            BigInt    @default(0) // phụ cấp ăn — miễn thuế đến một mức
+  transportVnd       BigInt    @default(0) // vé tháng xe máy
+  dutyVnd            BigInt    @default(0) // phụ cấp trách nhiệm
+  /// Mức lương đóng BHXH — thường thấp hơn lương thực nhận
+  insuranceSalaryVnd BigInt    @default(0)
+  dependents         Int       @default(0) // số người phụ thuộc, giảm trừ TNCN
+  note               String?
+
+  @@index([employeeId, effectiveFrom])
+}
+
+/// Lệch đặc tả: `date` dùng @db.Date thay vì String, theo quy ước 4 của GĐ1.
+model Holiday {
+  date DateTime @id @db.Date
+  name String
+  paid Boolean  @default(true)
+}
+
+/// Một dòng = một người một ngày. 1 = đủ, 0.5 = nửa ngày, 0 = nghỉ.
+model AttendanceDay {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  date       DateTime @db.Date
+  value      Decimal  @db.Decimal(3, 2) // 1.00 | 0.50 | 0.00
+  reason     String?
+  approvedBy String?
+  source     String   @default("MANUAL") // MANUAL | IMPORT
+
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+model LeaveType {
+  id          String   @id @default(cuid())
+  code        String   @unique // PHEP_NAM, KHONG_LUONG, OM…
+  name        String
+  paid        Boolean  @default(true)
+  daysPerYear Decimal? @db.Decimal(5, 2)
+
+  balances LeaveBalance[]
+  requests LeaveRequest[]
+}
+
+model LeaveBalance {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+  year        Int
+  entitled    Decimal   @db.Decimal(5, 2)
+  used        Decimal   @default(0) @db.Decimal(5, 2)
+
+  @@unique([employeeId, leaveTypeId, year])
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  leaveTypeId String
+  leaveType   LeaveType   @relation(fields: [leaveTypeId], references: [id])
+  fromDate    DateTime    @db.Date
+  toDate      DateTime    @db.Date
+  days        Decimal     @db.Decimal(5, 2)
+  reason      String?
+  status      LeaveStatus @default(PENDING)
+  approvedBy  String?
+
+  @@index([employeeId, fromDate])
+}
+
+/// Kỳ lương. Quy trình: DRAFT -> CALCULATED -> APPROVED -> PAID -> CLOSED.
+/// Từ APPROVED trở đi các dòng lương bất biến (trigger); điều chỉnh đi qua kỳ kế tiếp.
+model PayrollPeriod {
+  id               String        @id @default(cuid())
+  year             Int
+  month            Int
+  standardDays     Decimal       @db.Decimal(5, 2) // ngày công chuẩn của tháng
+  status           PayrollStatus @default(DRAFT)
+  /// Lợi nhuận công ty tháng đó — dùng làm cổng chặn thưởng
+  companyProfitVnd BigInt?
+  calculatedAt     DateTime?
+  approvedBy       String?
+  approvedAt       DateTime?
+  journalId        String?       @unique
+  closedAt         DateTime?
+
+  lines PayrollLine[]
+
+  @@unique([year, month])
+}
+
+/// Một dòng = một người một kỳ. TỔNG KỲ LƯƠNG LUÔN LÀ SUM(payrollLine),
+/// không có ô nào để gõ tổng — đây là chỗ sinh ra lệch 11,1 triệu tháng 8.
+model PayrollLine {
+  id         String        @id @default(cuid())
+  periodId   String
+  period     PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee      @relation(fields: [employeeId], references: [id])
+
+  workedDays Decimal @db.Decimal(5, 2)
+  leaveDays  Decimal @default(0) @db.Decimal(5, 2)
+
+  baseSalaryVnd   BigInt // lương cứng theo hợp đồng
+  proratedVnd     BigInt // lương theo ngày công thực tế
+  allowanceVnd    BigInt @default(0)
+  salesBonusVnd   BigInt @default(0) // thưởng doanh số ĐÃ qua cổng duyệt
+  perfPayVnd      BigInt @default(0) // lương hiệu quả
+  bonusHeldVnd    BigInt @default(0) // phần bị giữ lại vì tháng lỗ
+  insuranceEmpVnd BigInt @default(0) // NLĐ chịu
+  insuranceCoVnd  BigInt @default(0) // công ty chịu — chi phí, không trừ lương
+  pitVnd          BigInt @default(0)
+  penaltyVnd      BigInt @default(0)
+  netVnd          BigInt
+
+  note String?
+
+  @@unique([periodId, employeeId])
+}
+
+/// KPI giao cho từng người theo tháng.
+model KpiTarget {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  year       Int
+  month      Int
+  targetUsd  Decimal  @db.Decimal(12, 2)
+  shopIds    String[] // shop người này phụ trách
+
+  @@unique([employeeId, year, month])
+}
+
+/// Kết quả KPI. profit = tiền VỀ THẬT - giá vốn FF - chi phí chung phân bổ.
+model KpiResult {
+  id              String   @id @default(cuid())
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id])
+  year            Int
+  month           Int
+  cashReceivedUsd Decimal  @db.Decimal(12, 2)
+  ffCostUsd       Decimal  @db.Decimal(12, 2)
+  overheadUsd     Decimal  @default(0) @db.Decimal(12, 2)
+  profitUsd       Decimal  @db.Decimal(12, 2)
+  targetUsd       Decimal  @db.Decimal(12, 2)
+  achievedPct     Decimal  @db.Decimal(8, 4)
+  bonusVnd        BigInt   @default(0)
+
+  @@unique([employeeId, year, month])
+}
+
+/// Bậc thưởng theo % đạt KPI. Ví dụ 100-120% -> 2% profit vượt.
+model BonusRule {
+  id      String   @id @default(cuid())
+  name    String
+  fromPct Decimal  @db.Decimal(6, 2)
+  toPct   Decimal? @db.Decimal(6, 2)
+  ratePct Decimal  @db.Decimal(6, 2) // % trên phần profit vượt target
+  capVnd  BigInt?
+  active  Boolean  @default(true)
+}
+
+/// Tham số BHXH và TNCN — để trong DB để đổi được khi chính sách thay đổi, không hardcode.
+model PayrollSetting {
+  key       String   @id
+  valueJson Json
+  note      String?
+  updatedAt DateTime @updatedAt
+}

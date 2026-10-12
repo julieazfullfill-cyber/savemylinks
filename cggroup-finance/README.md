@@ -1,6 +1,8 @@
-# CGGroup — Hệ thống tài chính (giai đoạn 1)
+# CGGroup — Hệ thống tài chính & nhân sự
 
-Xây theo đặc tả: https://claude.ai/artifact/EtgCxATpUvTUtKCpJEghnW
+Xây theo đặc tả:
+- Giai đoạn 1 (tài chính): https://claude.ai/artifact/EtgCxATpUvTUtKCpJEghnW
+- Giai đoạn 2 (nhân sự, chấm công, lương, KPI): https://claude.ai/artifact/7sjsZZxEwv4q2PGCoGbo1i
 
 Next.js 15 (App Router) · Prisma 6 · PostgreSQL 16 · Tailwind 4 · Vitest.
 
@@ -86,3 +88,58 @@ tests/                                  money, forecast, catalog, ledger.db
 - [ ] Tuần 3 — màn hình 3, 4, 5, nhập tỷ giá
 - [ ] Tuần 4 — màn hình 7 P&L, import LegacyPnl, màn hình 1
 - [ ] Tuần 5 — màn hình 6 dự báo (loader DB + UI + snapshot), 4 cảnh báo, sao lưu
+
+---
+
+## Giai đoạn 2 — Nhân sự, chấm công, tiền lương
+
+```bash
+npm run db:migrate          # migration phase2_hr_payroll + phase2_integrity
+npm run db:seed             # seed gồm cả GĐ2 (phòng ban, chức danh, loại phép, bậc thưởng, PayrollSetting)
+npm run payroll:selftest    # phải in "OK — but toan can, tong ky bang tong cac dong."
+```
+
+| File | Nội dung |
+|---|---|
+| `prisma/schema.prisma` (cuối file) | 14 model GĐ2 — chỉ thêm, không sửa model GĐ1 |
+| `prisma/migrations/…_phase2_integrity` | hợp đồng không sửa/xoá, không chồng thời gian; chấm công 0/0,5/1; dòng lương khoá khi kỳ APPROVED; kỳ CLOSED bất biến |
+| `prisma/seed-phase2.ts` | danh mục GĐ2 + tham số `pit`, `insurance`, `mealExemptCap` |
+| `src/lib/pit.ts` | thuế TNCN luỹ tiến |
+| `src/lib/payroll.ts` | động cơ tính lương, `totalPayroll()` không nhận tham số tổng |
+| `src/lib/kpi.ts` | KPI (trừ chi phí chung), bậc thưởng, `bonusGate()` |
+| `src/lib/payroll-journal.ts` | bút toán lương 601/602 ↔ 202/203/204 |
+| `src/lib/payroll-settings.ts` | đọc tham số từ `PayrollSetting`, báo key nào đang dùng giá trị khởi tạo |
+| `src/lib/payroll-service.ts` | kỳ lương trên DB: tạo → tính → duyệt (sinh bút toán) |
+| `src/lib/hr.ts`, `hr-forms.ts` | thêm hợp đồng (tự đóng hợp đồng cũ), parse form |
+| `scripts/payroll-selftest.ts` | self-test số liệu tháng 8 (đặc tả mục 09) |
+| `src/app/(app)/nhan-su`, `hop-dong` | màn 9 Hồ sơ nhân sự, màn 10 Hợp đồng & lương |
+
+### Chỗ lệch / bổ sung so với đặc tả GĐ2
+
+- **Tiền tính bằng BigInt**: `prorate` và BHXH trong đặc tả nhân `Number` — đổi sang BigInt theo quy ước GĐ1.
+  Self-test tháng 8 ra đúng từng đồng như đặc tả (56.753.708 đ thực nhận, bút toán 76.893.333 đ) — có test khoá lại.
+- **`Holiday.date`** dùng `@db.Date` thay vì `String` (quy ước 4 của GĐ1).
+- **Bút toán có khoản phạt**: đặc tả bỏ qua `penaltyVnd` nên sẽ lệch đúng bằng số phạt. Thêm dòng Có 702 cho phần phạt.
+- **`bonusGate` khi chưa nhập lợi nhuận kỳ** (`companyProfitVnd = null`): giữ thưởng lại, không chi.
+- **Vai trò HR** chưa có trong enum GĐ1 → màn 9, 10, 11 dành cho ADMIN + QUAN_LY.
+- **Ngày tính lương** = công chấm + phép có lương + lễ có lương (thứ Hai–thứ Bảy), tối đa ngày công chuẩn.
+  Cột `workedDays` lưu công chấm, `leaveDays` lưu phép + lễ.
+- **Hợp đồng áp cho kỳ** = hợp đồng hiệu lực vào ngày làm cuối của người đó trong tháng (tăng lương giữa tháng
+  chưa chia hai mức — cần chính sách nếu muốn).
+- **Thiếu hợp đồng → kỳ lương báo lỗi kèm tên người**, không bỏ qua (chặn đúng lỗi bỏ sót người tháng 8).
+- Ngày công chuẩn nhập tay khi tạo kỳ; `suggestStandardDays` chỉ gợi ý (T2–T7 trừ lễ — tháng 8 ra 26, đặc tả dùng 24).
+- Chưa seed ngày lễ — nhập khi làm màn 11.
+
+### Cần kế toán xác nhận (đặc tả mục 12)
+
+`PayrollSetting`: `pit` (11.000.000 / 4.400.000 / 5–35%), `insurance` (NLĐ 10,5% · công ty 21,5%),
+`mealExemptCap` (730.000 đ). Seed không ghi đè giá trị đã sửa. Trần lương đóng BHXH chưa áp dụng.
+
+### Tiến độ GĐ2
+
+- [x] **Tuần 1** — schema + migration + chốt chặn DB, seed, màn 9 và 10
+- [x] Lõi tuần 3–4: động cơ tính lương, thuế, KPI/cổng chặn, bút toán; service tính & duyệt kỳ (có test DB)
+- [ ] Tuần 2 — màn 11 lưới chấm công, ngày lễ, màn 12 nghỉ phép + số dư phép
+- [ ] Tuần 3 — màn 13 kỳ lương (UI 5 trạng thái, nhập lương hiệu quả/khấu trừ), đối chiếu Excel kỳ 12
+- [ ] Tuần 4 — chi lương (PAID → CashTxn Nợ 202), khoá kỳ, màn 14 phiếu lương
+- [ ] Tuần 5 — màn 15 KPI & thưởng, phê duyệt vượt cấp phần thưởng bị giữ, chạy song song Excel

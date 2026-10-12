@@ -1,11 +1,14 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { accounts, cashAccounts, expenseCategories, seedCatalog, suppliers } from "./seed-data";
+import { seedPhase2 } from "./seed-phase2";
 
 const db = new PrismaClient();
 
 async function main() {
   await seedCatalog(db);
+  const p2 = await seedPhase2(db);
+  console.log(`GĐ2: ${p2.departments} phòng ban, ${p2.positions} chức danh, ${p2.leaveTypes} loại phép, ${p2.bonusTiers} bậc thưởng`);
 
   // Admin đầu tiên. Đổi mật khẩu ngay sau lần đăng nhập đầu (màn hình Danh mục → Người dùng).
   const email = process.env.SEED_ADMIN_EMAIL ?? "admin@cggroup.local";

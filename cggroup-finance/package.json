@@ -12,7 +12,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "test:unit": "dotenv -v VITEST_UNIT=1 -- vitest run --exclude \"tests/**/*.db.test.ts\"",
-    "test": "dotenv -e .env.test -- vitest run"
+    "test": "dotenv -e .env.test -- vitest run",
+    "payroll:selftest": "tsx scripts/payroll-selftest.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

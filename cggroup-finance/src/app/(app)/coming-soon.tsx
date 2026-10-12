@@ -9,7 +9,7 @@ export function ComingSoon({ href, children }: { href: string; children?: React.
       <h1 className="mt-1 text-2xl font-bold">{s.label}</h1>
       <div className="card mt-6 p-5 text-ink-2">
         <p>
-          Theo kế hoạch, màn hình này làm ở <strong>tuần {s.week}</strong> của giai đoạn 1b.
+          Theo kế hoạch, màn hình này làm ở <strong>tuần {s.week}</strong> của giai đoạn {s.phase === 1 ? "1b" : "2"}.
         </p>
         {children}
       </div>
