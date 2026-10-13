@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { addDays, fmtBizDate, startOfWeek, todayVn } from "@/lib/dates";
 import { monthlySpendByCategory } from "@/lib/expenses";
 import { buildForecast, firstWeekBelow } from "@/lib/forecast";
+import { loadOrderAlerts } from "@/lib/order-alerts-data";
 import { loadForecastInput } from "@/lib/forecast-data";
 import { prisma } from "@/lib/db";
 import { formatMoney, toVnd, type Currency } from "@/lib/money";
@@ -90,7 +91,10 @@ export default async function OverviewPage() {
     .filter((c) => (spend.get(c.id) ?? 0n) > c.budgetVnd!)
     .map((c) => ({ name: c.name, usedVnd: spend.get(c.id)!, budgetVnd: c.budgetVnd! }));
 
-  const alerts = buildAlerts({
+  // GĐ3: 5 cảnh báo đơn hàng / dòng tiền (30 ngày qua), gộp vào cùng danh sách, nặng xếp trước.
+  const orderAlerts = await prisma.$transaction((tx) => loadOrderAlerts(tx, today));
+  const RANK = { crit: 0, warn: 1, info: 2 } as const;
+  const baseAlerts = buildAlerts({
     forecastBreach,
     overBudget,
     today,
@@ -107,6 +111,7 @@ export default async function OverviewPage() {
     latestUsdRateDate: latestRate?.date ?? null,
     overdueBills: overdue.map((b) => ({ supplier: b.supplier.name, dueDate: b.dueDate, outstandingVnd: b.amountVnd - b.paidVnd })),
   });
+  const alerts = [...baseAlerts, ...orderAlerts].sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 
   const providers = [...new Map(rows.map((r) => [r.a.providerId, r.a.provider])).values()];
   const weekly = series.filter((_, i) => (series.length - 1 - i) % 7 === 0);

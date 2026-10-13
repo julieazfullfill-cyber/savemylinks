@@ -5,9 +5,10 @@ import type { Tx } from "./db";
 import type { ForecastInput, FulfillSupplier, RevenueChannel, Scenario } from "./forecast";
 import { divRound, toVnd, type Currency } from "./money";
 import { bookBalance, type LedgerTxn } from "./overview";
+import { PAYOUT_SCHEDULE, projectPayouts, type Channel } from "./payout";
 
-/** Chu kỳ payout mặc định theo kênh (ngày). */
-export const PAYOUT_DAYS: Record<string, number> = { AMAZON: 14, WALMART: 14, ETSY: 7, TIKTOK: 7, WEBSITE: 7 };
+/** Chu kỳ payout theo kênh (ngày) — một nguồn duy nhất: PAYOUT_SCHEDULE (payout.ts, GĐ3). */
+export const PAYOUT_DAYS: Record<string, number> = Object.fromEntries(Object.entries(PAYOUT_SCHEDULE).map(([k, v]) => [k, v.everyDays]));
 
 export type ForecastDefaults = { revenueFactor: number; ffRate: number; ffRateFromHistory: boolean };
 
@@ -55,12 +56,32 @@ export async function loadForecastInput(tx: Tx, p: { startDate: Date; scenario?:
   // Doanh thu theo kênh: trung bình tháng của 90 ngày qua; neo chu kỳ vào lần thu gần nhất.
   const shops = await tx.shop.findMany({ select: { id: true, channel: true } });
   const shopChannel = new Map(shops.map((s) => [s.id, s.channel]));
+  // GĐ3: đơn đã bán (60 ngày qua) chưa nằm trong payout nào → lịch tiền về thật theo chu kỳ từng sàn.
+  const pendingOrders = await tx.order.findMany({
+    where: { orderedAt: { gte: addDays(start, -60) }, status: { notIn: ["CANCELLED", "REFUNDED"] }, payoutLines: { none: {} } },
+    select: { orderedAt: true, netUsd: true, shop: { select: { channel: true } } },
+  });
+  const projected = projectPayouts(
+    pendingOrders.map((o) => ({ channel: o.shop.channel as Channel, date: o.orderedAt, netUsd: Number(o.netUsd) })),
+    start,
+  );
+  const pipeline = rate
+    ? projected.map((p) => ({ expectedOn: p.expectedOn, amountVnd: toVnd(BigInt(Math.round(p.amountUsd * 100)), "USD", rate) }))
+    : [];
+  const withOrders = new Set(pendingOrders.map((o) => o.shop.channel));
+
   const channels: RevenueChannel[] = CHANNELS.map((c) => {
     const list = shopIn.filter((t) => shopChannel.get(t.shopId!) === c.code);
     const total = list.reduce((s, t) => s + t.amountVnd, 0n);
     const last = list.reduce<Date | null>((m, t) => (!m || t.date > m ? t.date : m), null);
-    return { channel: c.code, monthlyVnd: total / 3n, payoutEveryDays: PAYOUT_DAYS[c.code] ?? 7, anchor: last ?? start };
+    const s = PAYOUT_SCHEDULE[c.code as Channel];
+    // Kênh có dữ liệu đơn: phần đã bán đã nằm trong pipeline → trung bình chỉ tính cho đơn bán sau ngày bắt đầu.
+    const anchor = withOrders.has(c.code) && s ? addDays(start, s.everyDays + s.lagDays) : last ?? start;
+    return { channel: c.code, monthlyVnd: total / 3n, payoutEveryDays: PAYOUT_DAYS[c.code] ?? 7, anchor };
   }).filter((c) => c.monthlyVnd > 0n);
+
+  // GĐ3: nghĩa vụ pháp nhân còn mở có số tiền → khoản chi dự kiến (quá hạn thì dồn tuần đầu).
+  const filings = await tx.entityFiling.findMany({ where: { status: { not: "DONE" }, amountVnd: { gt: 0n } } });
 
   // Tỷ lệ giá vốn lịch sử = giá vốn / doanh thu 90 ngày (cần có doanh thu), mặc định 35%.
   let rev = 0n;
@@ -115,7 +136,23 @@ export async function loadForecastInput(tx: Tx, p: { startDate: Date; scenario?:
       amountVnd: i.amountVnd,
       confidence: i.confidence,
       recurring: (i.recurring as "MONTHLY" | "WEEKLY" | null) ?? null,
-    })),
+    })).concat(
+      filings.map((f) => ({
+        expectedOn: f.dueDate < start ? start : f.dueDate,
+        direction: "OUT" as const,
+        amountVnd: f.amountVnd!,
+        confidence: 100,
+        recurring: null,
+      })),
+    ),
+    pipeline,
   };
-  return { input, defaults, missingRate: !rate && accounts.some((a) => a.currency !== "VND"), payrollCost };
+  return {
+    input,
+    defaults,
+    missingRate: !rate && accounts.some((a) => a.currency !== "VND"),
+    payrollCost,
+    pendingOrders: pendingOrders.length,
+    filings: filings.length,
+  };
 }

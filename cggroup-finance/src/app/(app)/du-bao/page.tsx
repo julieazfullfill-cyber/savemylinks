@@ -30,7 +30,7 @@ export default async function ForecastPage({ searchParams }: { searchParams: Pro
     floor = toMinor(sp.floor ?? lastScenario.floorVnd ?? "0", "VND");
   } catch {}
 
-  const { input, defaults, missingRate, payrollCost } = await prisma.$transaction((tx) =>
+  const { input, defaults, missingRate, payrollCost, pendingOrders, filings } = await prisma.$transaction((tx) =>
     loadForecastInput(tx, { startDate: start, scenario: { name: sp.name, revenueFactor: num(sp.rf), ffRate: num(sp.ff) } }),
   );
   const rows = buildForecast(input);
@@ -127,7 +127,7 @@ export default async function ForecastPage({ searchParams }: { searchParams: Pro
         <table className="tbl text-xs">
           <thead>
             <tr>
-              <th>Tuần</th><th className="text-right">Mở đầu</th><th className="text-right">Tiền giam về</th><th className="text-right">Doanh thu về</th>
+              <th>Tuần</th><th className="text-right">Mở đầu</th><th className="text-right">Tiền giam về</th><th className="text-right">Đơn chờ về</th><th className="text-right">Doanh thu về</th>
               <th className="text-right">Thu khác</th><th className="text-right">Hoá đơn NCC</th><th className="text-right">Giá vốn FF</th>
               <th className="text-right">Định kỳ</th><th className="text-right">Chi khác</th><th className="text-right">Chênh lệch</th><th className="text-right">Cuối tuần</th>
             </tr>
@@ -136,7 +136,7 @@ export default async function ForecastPage({ searchParams }: { searchParams: Pro
             {rows.map((r) => (
               <tr key={r.week} className={floor && r.closing < floor ? "bg-red-50" : ""}>
                 <td className="whitespace-nowrap">T{r.week} · {ddmm(r.from)}–{ddmm(r.to)}</td>
-                {[r.opening, r.reserveIn, r.revenueIn, r.manualIn, -r.billsOut, -r.cogsOut, -r.fixedOut, -r.manualOut, r.net].map((v, i) => (
+                {[r.opening, r.reserveIn, r.pipelineIn, r.revenueIn, r.manualIn, -r.billsOut, -r.cogsOut, -r.fixedOut, -r.manualOut, r.net].map((v, i) => (
                   <td key={i} className={`whitespace-nowrap text-right tabular-nums ${v < 0n ? "text-crit" : ""}`}>{v === 0n ? <span className="text-muted">—</span> : compactVnd(Number(v))}</td>
                 ))}
                 <td className={`whitespace-nowrap text-right font-semibold tabular-nums ${r.closing < 0n ? "text-crit" : ""}`}>{compactVnd(Number(r.closing))}</td>
@@ -148,7 +148,7 @@ export default async function ForecastPage({ searchParams }: { searchParams: Pro
       <p className="mt-1 text-xs text-muted">
         Doanh thu: trung bình thu từ shop 90 ngày qua × hệ số, về theo chu kỳ payout từng kênh ({input.channels.map((c) => `${c.channel} ${c.payoutEveryDays} ngày`).join(", ") || "chưa có kênh nào có doanh thu"}).
         Giá vốn: NCC trả trước trừ ngay, NCC công nợ lùi theo số ngày nợ. Chi phí định kỳ: ngân sách hạng mục có ngày đến hạn
-        {payrollCost > 0n ? `; lương lấy từ kỳ lương gần nhất (${formatMoney(payrollCost)})` : ""}. Tiền bị giam chỉ cộng vào tuần dự kiến về.
+        {payrollCost > 0n ? `; lương lấy từ kỳ lương gần nhất (${formatMoney(payrollCost)})` : ""}. Tiền bị giam chỉ cộng vào tuần dự kiến về.{pendingOrders > 0 && ` Đơn chờ về: ${pendingOrders} đơn đã bán chưa nằm trong payout, xếp theo lịch payout thật từng sàn (doanh thu trung bình của kênh đó chỉ tính cho đơn bán sau hôm nay).`}{filings > 0 && ` Gồm ${filings} nghĩa vụ pháp nhân còn mở (màn 16).`}
       </p>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">

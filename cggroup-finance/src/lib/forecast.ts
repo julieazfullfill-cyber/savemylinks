@@ -50,6 +50,11 @@ export type ForecastInput = {
     confidence: number;
     recurring: "MONTHLY" | "WEEKLY" | null;
   }[];
+  /**
+   * GĐ3: tiền của đơn ĐÃ BÁN chưa về, theo lịch payout thật từng sàn (payout.ts projectPayouts).
+   * Kênh có dữ liệu đơn thì `channels` chỉ còn tính doanh thu bán SAU ngày bắt đầu (anchor dời theo) — không đếm trùng.
+   */
+  pipeline?: { expectedOn: Date; amountVnd: bigint }[];
 };
 
 export type ForecastRow = {
@@ -58,6 +63,7 @@ export type ForecastRow = {
   to: Date;
   opening: bigint;
   reserveIn: bigint;
+  pipelineIn: bigint;
   revenueIn: bigint;
   manualIn: bigint;
   billsOut: bigint;
@@ -131,6 +137,7 @@ export function buildForecast(input: ForecastInput): ForecastRow[] {
   ranges.forEach(([from, to], w) => {
     // TIỀN VÀO
     const reserveIn = sum(input.reserves.filter((r) => inRange(r.releaseOn, from, to)).map((r) => r.amountVnd));
+    const pipelineIn = sum((input.pipeline ?? []).filter((p) => inRange(p.expectedOn, from, to)).map((p) => p.amountVnd));
     const revenueIn = sum(
       input.channels.map((c) => {
         // Mỗi payout gom doanh thu của `payoutEveryDays` ngày: tháng × 12 × ngày / 365.
@@ -168,12 +175,12 @@ export function buildForecast(input: ForecastInput): ForecastRow[] {
         .flatMap((i) => occurrences(i.expectedOn, i.recurring, from, to).map(() => i.amountVnd)),
     );
 
-    const inflow = reserveIn + revenueIn + manualIn;
+    const inflow = reserveIn + pipelineIn + revenueIn + manualIn;
     const outflow = billsOut + cogsOut + fixedOut + manualOut;
     const closing = opening + inflow - outflow;
     rows.push({
       week: w + 1, from, to, opening,
-      reserveIn, revenueIn, manualIn, billsOut, cogsOut, fixedOut, manualOut,
+      reserveIn, pipelineIn, revenueIn, manualIn, billsOut, cogsOut, fixedOut, manualOut,
       inflow, outflow, net: inflow - outflow, closing,
     });
     opening = closing;
