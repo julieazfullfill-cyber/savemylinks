@@ -1,3 +1,10 @@
+import { vi } from "vitest";
+
+// Schema riêng của file này (xem tests/global-setup.ts) — phải chạy trước khi Prisma kết nối.
+vi.hoisted(() => {
+  process.env.DATABASE_URL = process.env.TEST_DB_URL_PAYROLL;
+});
+
 // Test tích hợp GĐ2 với Postgres thật (schema tạm, xem global-setup.ts).
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { addDays, parseBizDate as d } from "@/lib/dates";

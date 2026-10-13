@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { addDays, fmtBizDate, todayVn } from "@/lib/dates";
+import { addDays, fmtBizDate, startOfWeek, todayVn } from "@/lib/dates";
+import { monthlySpendByCategory } from "@/lib/expenses";
+import { buildForecast, firstWeekBelow } from "@/lib/forecast";
+import { loadForecastInput } from "@/lib/forecast-data";
 import { prisma } from "@/lib/db";
 import { formatMoney, toVnd, type Currency } from "@/lib/money";
 import { balanceSeries, bookBalance, buildAlerts, compactVnd, flows, type LedgerTxn, type Severity } from "@/lib/overview";
@@ -65,7 +68,31 @@ export default async function OverviewPage() {
     today,
   );
 
+  // Dự báo theo kịch bản & ngưỡng của lần lưu gần nhất ở màn 6 (chưa lưu → không có ngưỡng).
+  const snap = await prisma.forecastSnapshot.findFirst({ orderBy: { createdAt: "desc" } });
+  const sc = (snap?.scenario ?? null) as { revenueFactor?: number; ffRate?: number; floorVnd?: string } | null;
+  let forecastBreach: { week: number; from: Date; closingVnd: bigint; floorVnd: bigint } | null = null;
+  if (sc?.floorVnd && BigInt(sc.floorVnd) > 0n) {
+    const floorVnd = BigInt(sc.floorVnd);
+    const { input } = await prisma.$transaction((tx) =>
+      loadForecastInput(tx, { startDate: startOfWeek(today), scenario: { revenueFactor: sc.revenueFactor, ffRate: sc.ffRate } }),
+    );
+    const b = firstWeekBelow(buildForecast(input), floorVnd);
+    if (b) forecastBreach = { week: b.week, from: b.from, closingVnd: b.closing, floorVnd };
+  }
+
+  // Chi vượt ngân sách tháng này.
+  const [budgetCats, spend] = await Promise.all([
+    prisma.expenseCategory.findMany({ where: { active: true, budgetVnd: { not: null } } }),
+    prisma.$transaction((tx) => monthlySpendByCategory(tx, today.getUTCFullYear(), today.getUTCMonth() + 1)),
+  ]);
+  const overBudget = budgetCats
+    .filter((c) => (spend.get(c.id) ?? 0n) > c.budgetVnd!)
+    .map((c) => ({ name: c.name, usedVnd: spend.get(c.id)!, budgetVnd: c.budgetVnd! }));
+
   const alerts = buildAlerts({
+    forecastBreach,
+    overBudget,
     today,
     accounts: rows.map((r) => ({
       id: r.a.id,

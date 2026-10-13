@@ -23,7 +23,7 @@ export const SCREENS: Screen[] = [
   { no: 3, href: "/chi-phi", label: "Chi phí & duyệt chi", roles: ALL, phase: 1, week: 3, built: true },
   { no: 4, href: "/cong-no", label: "Công nợ nhà cung cấp", roles: ["ADMIN", "KE_TOAN"], phase: 1, week: 3, built: true },
   { no: 5, href: "/chot-so-du", label: "Chốt số dư", roles: ["ADMIN", "KE_TOAN"], phase: 1, week: 3, built: true },
-  { no: 6, href: "/du-bao", label: "Dự báo 13 tuần", roles: ["ADMIN", "QUAN_LY"], phase: 1, week: 5 },
+  { no: 6, href: "/du-bao", label: "Dự báo 13 tuần", roles: ["ADMIN", "QUAN_LY"], phase: 1, week: 5, built: true },
   { no: 7, href: "/pnl", label: "P&L quản trị", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 1, week: 4, built: true },
   { no: 8, href: "/danh-muc", label: "Danh mục & người dùng", roles: ["ADMIN"], phase: 1, week: 1, built: true },
   { no: 9, href: "/nhan-su", label: "Hồ sơ nhân sự", roles: HR, phase: 2, week: 1, built: true },

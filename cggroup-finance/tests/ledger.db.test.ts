@@ -1,3 +1,10 @@
+import { vi } from "vitest";
+
+// Schema riêng của file này (xem tests/global-setup.ts) — phải chạy trước khi Prisma kết nối.
+vi.hoisted(() => {
+  process.env.DATABASE_URL = process.env.TEST_DB_URL_LEDGER;
+});
+
 // Test tích hợp với Postgres thật (DB trong .env.test). Chạy: npm run test
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";

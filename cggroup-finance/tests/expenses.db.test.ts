@@ -1,3 +1,10 @@
+import { vi } from "vitest";
+
+// Schema riêng của file này (xem tests/global-setup.ts) — phải chạy trước khi Prisma kết nối.
+vi.hoisted(() => {
+  process.env.DATABASE_URL = process.env.TEST_DB_URL_EXPENSES;
+});
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseBizDate as d } from "@/lib/dates";
 import { prisma } from "@/lib/db";

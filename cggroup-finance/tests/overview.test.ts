@@ -86,6 +86,22 @@ describe("cảnh báo", () => {
     expect(a.map((x) => x.title)).toEqual(["Lệch số dư: AWHK", "1 tài khoản chưa có số dư đầu kỳ"]);
   });
 
+  it("chạm đáy dự báo là nghiêm trọng; vượt ngân sách là cần xem", () => {
+    const a = buildAlerts({
+      ...base,
+      forecastBreach: { week: 4, from: d("2026-12-14"), closingVnd: 50n, floorVnd: 100n },
+      overBudget: [
+        { name: "VPS", usedVnd: 110n, budgetVnd: 100n },
+        { name: "Marketing", usedVnd: 300n, budgetVnd: 100n },
+      ],
+    });
+    expect(a.map((x) => [x.severity, x.title])).toEqual([
+      ["crit", "Số dư dự kiến chạm đáy tuần 4"],
+      ["warn", "2 hạng mục chi vượt ngân sách"],
+    ]);
+    expect(a[1].detail).toMatch(/Marketing/);
+  });
+
   it("chưa có giao dịch → gợi ý bắt đầu", () => {
     expect(buildAlerts({ ...base, accounts: [acc({ txnCount: 0, book: 0n })] })[0].severity).toBe("info");
   });

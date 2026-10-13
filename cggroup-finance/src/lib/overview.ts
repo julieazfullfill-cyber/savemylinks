@@ -81,6 +81,10 @@ export type AlertInput = {
   overdueBills: { supplier: string; dueDate: Date; outstandingVnd: bigint }[];
   /** tỷ giá cũ hơn số ngày này thì cảnh báo */
   staleRateDays?: number;
+  /** tuần đầu tiên dự báo xuống dưới ngưỡng (màn 6) */
+  forecastBreach?: { week: number; from: Date; closingVnd: bigint; floorVnd: bigint } | null;
+  /** hạng mục chi vượt ngân sách tháng này */
+  overBudget?: { name: string; usedVnd: bigint; budgetVnd: bigint }[];
 };
 
 const ORDER: Record<Severity, number> = { crit: 0, warn: 1, info: 2 };
@@ -99,6 +103,16 @@ export function buildAlerts(i: AlertInput): Alert[] {
         href: `/so-quy?acc=${a.id}`,
       });
     }
+  }
+
+  if (i.forecastBreach) {
+    const b = i.forecastBreach;
+    out.push({
+      severity: "crit",
+      title: `Số dư dự kiến chạm đáy tuần ${b.week}`,
+      detail: `Tuần từ ${fmtBizDate(b.from)} dự kiến còn ${formatMoney(b.closingVnd)}, dưới ngưỡng ${formatMoney(b.floorVnd)}.`,
+      href: "/du-bao",
+    });
   }
 
   if (i.overdueBills.length) {
@@ -139,6 +153,16 @@ export function buildAlerts(i: AlertInput): Alert[] {
         href: `/so-quy?acc=${a.id}`,
       });
     }
+  }
+
+  if (i.overBudget?.length) {
+    const worst = i.overBudget.reduce((m, b) => (b.usedVnd * m.budgetVnd > m.usedVnd * b.budgetVnd ? b : m));
+    out.push({
+      severity: "warn",
+      title: `${i.overBudget.length} hạng mục chi vượt ngân sách`,
+      detail: `Nặng nhất: ${worst.name} ${formatMoney(worst.usedVnd)} / ${formatMoney(worst.budgetVnd)} tháng này.`,
+      href: "/chi-phi",
+    });
   }
 
   const noOpening = i.accounts.filter((a) => a.txnCount > 0 && !a.hasOpening);
