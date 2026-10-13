@@ -3,7 +3,7 @@
 import { parseBizDate } from "./dates";
 import { toMinor } from "./money";
 
-export type RefSource = "account" | "assetAccount" | "entity" | "user" | "provider";
+export type RefSource = "account" | "assetAccount" | "entity" | "user" | "provider" | "design" | "product";
 
 export type Field = {
   name: string;
@@ -28,7 +28,7 @@ export type Field = {
 export type Catalog = {
   key: string;
   label: string;
-  model: "account" | "cashProvider" | "cashAccount" | "expenseCategory" | "supplier" | "shop" | "legalEntity" | "user";
+  model: "account" | "cashProvider" | "cashAccount" | "expenseCategory" | "supplier" | "shop" | "legalEntity" | "user" | "design" | "product" | "variant";
   table: string;
   idField: "id" | "code";
   fields: Field[];
@@ -117,6 +117,42 @@ export const CATALOGS: Catalog[] = [
     ],
   },
   // Shop: chuyển sang màn 16 (GĐ3) — bắt buộc pháp nhân + tài khoản nhận tiền, đổi trạng thái có lịch sử.
+  // GĐ3: design → sản phẩm → biến thể SKU. SKU trên đơn khớp biến thể thì biên lãi gom được theo design (màn 23).
+  {
+    key: "design",
+    label: "Design",
+    model: "design",
+    table: "Design",
+    idField: "id",
+    fields: [code, name, { name: "niche", label: "Niche", type: "text", help: "wedding, birthday, custom photo…" }],
+  },
+  {
+    key: "san-pham",
+    label: "Sản phẩm",
+    model: "product",
+    table: "Product",
+    idField: "id",
+    fields: [
+      { name: "sku", label: "SKU gốc", type: "text", required: true, immutable: true },
+      name,
+      { name: "designId", label: "Design", type: "ref", ref: "design" },
+      { name: "type", label: "Loại", type: "select", options: ["TSHIRT", "HOODIE", "SWEATSHIRT", "ORNAMENT", "MUG", "POSTER", "OTHER"] },
+      active,
+    ],
+  },
+  {
+    key: "bien-the-sku",
+    label: "Biến thể SKU",
+    model: "variant",
+    table: "Variant",
+    idField: "id",
+    fields: [
+      { name: "productId", label: "Sản phẩm", type: "ref", ref: "product", required: true },
+      { name: "sku", label: "SKU", type: "text", required: true, immutable: true, help: "Đúng như SKU trên file đơn của sàn" },
+      { name: "size", label: "Size", type: "text" },
+      { name: "color", label: "Màu", type: "text" },
+    ],
+  },
   {
     key: "phap-nhan",
     label: "Pháp nhân",

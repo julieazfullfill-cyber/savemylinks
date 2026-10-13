@@ -40,8 +40,8 @@ export const SCREENS: Screen[] = [
   { no: 19, href: "/ncc", label: "NCC & bảng giá", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 3, week: 2, built: true },
   { no: 20, href: "/import-don", label: "Import đơn hàng", roles: ["ADMIN", "KE_TOAN"], phase: 3, week: 3, built: true },
   { no: 21, href: "/don-hang", label: "Đơn hàng", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 3, week: 4, built: true },
-  { no: 22, href: "/doi-soat", label: "Đối soát payout", roles: ["ADMIN", "KE_TOAN"], phase: 3, week: 7 },
-  { no: 23, href: "/bien-lai", label: "Biên lãi theo shop", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 3, week: 6 },
+  { no: 22, href: "/doi-soat", label: "Đối soát payout", roles: ["ADMIN", "KE_TOAN"], phase: 3, week: 7, built: true },
+  { no: 23, href: "/bien-lai", label: "Biên lãi theo shop", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 3, week: 6, built: true },
 ];
 
 /** Các route không cần đăng nhập. */

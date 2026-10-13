@@ -11,11 +11,13 @@ type Row = Record<string, unknown>;
 type RefOptions = Record<RefSource, { value: string; label: string }[]>;
 
 async function loadRefs(): Promise<RefOptions> {
-  const [accounts, entities, users, providers] = await Promise.all([
+  const [accounts, entities, users, providers, designs, products] = await Promise.all([
     prisma.account.findMany({ orderBy: { code: "asc" } }),
     prisma.legalEntity.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.cashProvider.findMany({ orderBy: { name: "asc" } }),
+    prisma.design.findMany({ orderBy: { code: "asc" } }),
+    prisma.product.findMany({ orderBy: { sku: "asc" } }),
   ]);
   const acc = (a: (typeof accounts)[number]) => ({ value: a.code, label: `${a.code} · ${a.name}` });
   return {
@@ -24,6 +26,8 @@ async function loadRefs(): Promise<RefOptions> {
     entity: entities.map((e) => ({ value: e.id, label: `${e.code} · ${e.name}` })),
     user: users.map((u) => ({ value: u.id, label: u.name })),
     provider: providers.map((p) => ({ value: p.id, label: p.active ? p.name : `${p.name} (ngưng)` })),
+    design: designs.map((d) => ({ value: d.id, label: `${d.code} · ${d.name}` })),
+    product: products.map((p) => ({ value: p.id, label: `${p.sku} · ${p.name}` })),
   };
 }
 
@@ -34,7 +38,9 @@ async function loadRows(cat: Catalog): Promise<Row[]> {
       ? { email: "asc" as const }
       : cat.model === "cashAccount"
         ? [{ provider: { name: "asc" as const } }, { code: "asc" as const }]
-        : { code: "asc" as const };
+        : cat.model === "product" || cat.model === "variant"
+          ? { sku: "asc" as const }
+          : { code: "asc" as const };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (prisma as any)[cat.model].findMany({ orderBy });
 }
