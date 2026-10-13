@@ -13,7 +13,8 @@
     "db:seed": "prisma db seed",
     "test:unit": "dotenv -v VITEST_UNIT=1 -- vitest run --exclude \"tests/**/*.db.test.ts\"",
     "test": "dotenv -e .env.test -- vitest run",
-    "payroll:selftest": "tsx scripts/payroll-selftest.ts"
+    "payroll:selftest": "tsx scripts/payroll-selftest.ts",
+    "phase3:selftest": "tsx scripts/phase3-selftest.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

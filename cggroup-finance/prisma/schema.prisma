@@ -120,6 +120,7 @@ model LegalEntity {
   active        Boolean   @default(true)
 
   cashAccounts CashAccount[]
+  filings      EntityFiling[]
 }
 
 /// Hệ thống tài khoản nội bộ — 35 tài khoản tự đặt.
@@ -155,19 +156,29 @@ model Supplier {
   creditDays Int     @default(0)
   active     Boolean @default(true)
 
-  bills SupplierBill[]
+  bills        SupplierBill[]
+  fulfillments FulfillmentOrder[]
+  prices       SupplierPrice[]
 }
 
 /// Shop — GĐ1 chỉ cần danh mục, nghiệp vụ đơn hàng để GĐ3.
 model Shop {
-  id       String    @id @default(cuid())
-  code     String    @unique
-  name     String
-  channel  String // ETSY | AMAZON | TIKTOK | WEBSITE
-  entityId String?
-  ownerId  String? // User phụ trách
-  status   String    @default("ACTIVE")
-  openedAt DateTime? @db.Date
+  id              String       @id @default(cuid())
+  code            String       @unique
+  name            String
+  channel         String // AMAZON | ETSY | WALMART | TIKTOK | WEBSITE (CHECK shop_channel)
+  entityId        String?
+  ownerId         String? // User phụ trách
+  /// ACTIVE | UNDER_REVIEW | SUSPENDED | DEACTIVATED | CLOSED (CHECK shop_status, GĐ3)
+  status          String       @default("ACTIVE")
+  openedAt        DateTime?    @db.Date
+  /// GĐ3: tài khoản nhận tiền của shop (màn 16, 17)
+  payoutAccountId String?
+  payoutAccount   CashAccount? @relation("ShopPayoutAccount", fields: [payoutAccountId], references: [id])
+
+  orders       Order[]
+  healthEvents ShopHealthEvent[]
+  payouts      Payout[]
 }
 
 // ───────────────────────── tiền & sổ ─────────────────────────
@@ -202,6 +213,8 @@ model CashAccount {
 
   txns     CashTxn[]
   balances AccountBalance[]
+  payouts  Payout[]
+  shops    Shop[]           @relation("ShopPayoutAccount")
 
   @@unique([providerId, email])
 }
@@ -663,4 +676,237 @@ model PayrollSetting {
   valueJson Json
   note      String?
   updatedAt DateTime @updatedAt
+}
+
+// ===================================================================
+// GIAI ĐOẠN 3 — Shop, nhà cung cấp, đơn hàng
+// Đặc tả: https://claude.ai/artifact/D2kfxhyzcpapDHUB3G1JEx
+// Đơn hàng là dữ liệu PHÂN TÍCH (biên lãi, đối soát) — không ghi sổ cái; doanh thu vào sổ
+// khi tiền về (payout → "Thu từ shop"), tránh ghi doanh thu hai lần. Sổ kép đầy đủ: GĐ4.
+// ===================================================================
+
+enum FulfillStatus {
+  PENDING
+  SUBMITTED
+  IN_PRODUCTION
+  SHIPPED
+  DELIVERED
+  FAILED
+}
+
+enum OrderStatus {
+  NEW
+  PROCESSING
+  FULFILLED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model Design {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  niche     String?
+  createdAt DateTime @default(now())
+
+  products Product[]
+}
+
+model Product {
+  id       String  @id @default(cuid())
+  sku      String  @unique
+  name     String
+  designId String?
+  design   Design? @relation(fields: [designId], references: [id])
+  type     String? // TSHIRT | HOODIE | ORNAMENT | MUG…
+  active   Boolean @default(true)
+
+  variants Variant[]
+}
+
+model Variant {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  sku       String  @unique
+  size      String?
+  color     String?
+
+  items OrderItem[]
+}
+
+/// Doanh thu GHI NHẬN theo ngày đặt; tiền về theo ngày payout — hai mốc tách bạch.
+model Order {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id])
+  externalId String // mã đơn trên sàn
+  orderedAt  DateTime @db.Date
+  country    String?
+  currency   Currency @default(USD)
+
+  grossUsd           Decimal @db.Decimal(12, 2)
+  discountUsd        Decimal @default(0) @db.Decimal(12, 2)
+  shippingChargedUsd Decimal @default(0) @db.Decimal(12, 2)
+  platformFeeUsd     Decimal @default(0) @db.Decimal(12, 2)
+  taxUsd             Decimal @default(0) @db.Decimal(12, 2)
+  netUsd             Decimal @db.Decimal(12, 2)
+
+  status        OrderStatus  @default(NEW)
+  importBatchId String?
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  items        OrderItem[]
+  cost         OrderCost?
+  fulfillments FulfillmentOrder[]
+  refunds      Refund[]
+  payoutLines  PayoutLine[]
+
+  @@unique([shopId, externalId])
+  @@index([orderedAt])
+  @@index([shopId, orderedAt])
+}
+
+model OrderItem {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId    String?
+  variant      Variant? @relation(fields: [variantId], references: [id])
+  sku          String
+  qty          Int      @default(1)
+  unitPriceUsd Decimal  @db.Decimal(12, 2)
+}
+
+/// Giá vốn từng đơn → biên lãi từng đơn. Tính lại bằng recomputeOrderCosts().
+model OrderCost {
+  id            String  @id @default(cuid())
+  orderId       String  @unique
+  order         Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ffCostUsd     Decimal @default(0) @db.Decimal(12, 2)
+  shipCostUsd   Decimal @default(0) @db.Decimal(12, 2)
+  designCostUsd Decimal @default(0) @db.Decimal(12, 2)
+  adsCostUsd    Decimal @default(0) @db.Decimal(12, 2)
+  overheadUsd   Decimal @default(0) @db.Decimal(12, 2)
+}
+
+model Refund {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  refundedAt DateTime @db.Date
+  amountUsd  Decimal  @db.Decimal(12, 2)
+  reason     String?
+}
+
+model FulfillmentOrder {
+  id            String        @id @default(cuid())
+  orderId       String
+  order         Order         @relation(fields: [orderId], references: [id])
+  supplierId    String
+  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+  externalId    String?
+  /// Bổ sung: SKU để tra bảng giá NCC (đơn nhiều mặt hàng → một đơn fulfill mỗi SKU)
+  sku           String?
+  submittedAt   DateTime?     @db.Date
+  status        FulfillStatus @default(PENDING)
+  costUsd       Decimal       @default(0) @db.Decimal(12, 2)
+  shipUsd       Decimal       @default(0) @db.Decimal(12, 2)
+  /// Giá theo bảng giá tại thời điểm đặt — để so với giá thực trả
+  listedCostUsd Decimal?      @db.Decimal(12, 2)
+  trackingNo    String?
+
+  @@index([supplierId, submittedAt])
+  @@index([status])
+}
+
+/// Bảng giá NCC theo thời kỳ (giá mới = bản ghi mới, bản cũ tự đóng — như hợp đồng lương).
+model SupplierPrice {
+  id            String    @id @default(cuid())
+  supplierId    String
+  supplier      Supplier  @relation(fields: [supplierId], references: [id])
+  sku           String
+  priceUsd      Decimal   @db.Decimal(12, 2)
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  @@index([supplierId, sku, effectiveFrom])
+}
+
+/// Một lần sàn trả tiền. Bổ sung shopId: tiền về ghi "Thu từ shop" vào doanh thu của kênh shop.
+model Payout {
+  id         String      @id @default(cuid())
+  accountId  String
+  account    CashAccount @relation(fields: [accountId], references: [id])
+  shopId     String?
+  shop       Shop?       @relation(fields: [shopId], references: [id])
+  channel    String
+  periodFrom DateTime    @db.Date
+  periodTo   DateTime    @db.Date
+  grossUsd   Decimal     @db.Decimal(12, 2)
+  feeUsd     Decimal     @default(0) @db.Decimal(12, 2)
+  netUsd     Decimal     @db.Decimal(12, 2)
+  arrivedAt  DateTime?   @db.Date
+  cashTxnId  String?     @unique
+  reconciled Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+
+  lines PayoutLine[]
+
+  @@index([arrivedAt])
+}
+
+model PayoutLine {
+  id              String  @id @default(cuid())
+  payoutId        String
+  payout          Payout  @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  orderId         String?
+  order           Order?  @relation(fields: [orderId], references: [id])
+  /// Bổ sung: mã đơn trên sàn như trong file payout (giữ lại cả khi không khớp đơn nào)
+  externalOrderId String?
+  amountUsd       Decimal @db.Decimal(12, 2)
+  kind            String  @default("ORDER") // ORDER | FEE | REFUND | ADJUST
+}
+
+/// Lịch sử đổi trạng thái shop — tần suất bị treo theo kênh và người phụ trách.
+model ShopHealthEvent {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id])
+  at         DateTime @db.Date
+  fromStatus String
+  toStatus   String
+  note       String?
+  createdBy  String?
+
+  @@index([shopId, at])
+}
+
+/// Hạn gia hạn pháp nhân, hạn nộp hồ sơ. Khoản OPEN có số tiền đi vào dự báo 13 tuần.
+model EntityFiling {
+  id          String      @id @default(cuid())
+  entityId    String
+  entity      LegalEntity @relation(fields: [entityId], references: [id])
+  kind        String // ANNUAL_REPORT | RENEWAL | TAX_5472 | TAX_HKD
+  dueDate     DateTime    @db.Date
+  amountVnd   BigInt?
+  status      String      @default("OPEN") // OPEN | DONE | LATE
+  completedAt DateTime?   @db.Date
+
+  @@index([dueDate, status])
+}
+
+model ImportBatch {
+  id         String   @id @default(cuid())
+  channel    String
+  filename   String
+  rowCount   Int
+  okCount    Int      @default(0)
+  errorCount Int      @default(0)
+  importedBy String
+  importedAt DateTime @default(now())
+  note       String?
+
+  orders Order[]
 }
