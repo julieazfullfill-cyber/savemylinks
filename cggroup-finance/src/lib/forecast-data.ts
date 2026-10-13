@@ -31,7 +31,7 @@ export async function loadForecastInput(tx: Tx, p: { startDate: Date; scenario?:
     }),
     tx.journalLine.groupBy({
       by: ["accountCode"],
-      where: { entry: { date: { gte: from90, lt: start } }, account: { type: { in: ["REVENUE", "COGS"] } } },
+      where: { entry: { date: { gte: from90, lt: start }, source: { not: "CLOSING" } }, account: { type: { in: ["REVENUE", "COGS"] } } },
       _sum: { debitVnd: true, creditVnd: true },
     }),
     tx.supplierBill.findMany({ where: { status: { in: ["OPEN", "PARTIAL"] } }, select: { dueDate: true, amountVnd: true, paidVnd: true } }),
@@ -82,6 +82,11 @@ export async function loadForecastInput(tx: Tx, p: { startDate: Date; scenario?:
 
   // GĐ3: nghĩa vụ pháp nhân còn mở có số tiền → khoản chi dự kiến (quá hạn thì dồn tuần đầu).
   const filings = await tx.entityFiling.findMany({ where: { status: { not: "DONE" }, amountVnd: { gt: 0n } } });
+  // GĐ4: nghĩa vụ thuế chưa nộp → chi; phải thu còn lại → thu (đến hạn, quá hạn dồn tuần đầu).
+  const [taxes, receivables] = await Promise.all([
+    tx.taxObligation.findMany({ where: { status: { not: "PAID" } } }),
+    tx.arInvoice.findMany({ where: { status: { not: "PAID" } } }),
+  ]);
 
   // Tỷ lệ giá vốn lịch sử = giá vốn / doanh thu 90 ngày (cần có doanh thu), mặc định 35%.
   let rev = 0n;
@@ -144,6 +149,11 @@ export async function loadForecastInput(tx: Tx, p: { startDate: Date; scenario?:
         confidence: 100,
         recurring: null,
       })),
+      // TNCN / BHXH đã nằm trong dòng lương (thực nhận + BHXH + thuế) → không cộng lần hai
+      taxes
+        .filter((t) => !(payrollCost > 0n && (t.kind === "TNCN" || t.kind === "BHXH")))
+        .map((t) => ({ expectedOn: t.dueDate < start ? start : t.dueDate, direction: "OUT" as const, amountVnd: t.amountVnd - t.paidVnd, confidence: 100, recurring: null })),
+      receivables.map((r) => ({ expectedOn: r.dueDate < start ? start : r.dueDate, direction: "IN" as const, amountVnd: r.amountVnd - r.paidVnd, confidence: 100, recurring: null })),
     ),
     pipeline,
   };
@@ -154,5 +164,7 @@ export async function loadForecastInput(tx: Tx, p: { startDate: Date; scenario?:
     payrollCost,
     pendingOrders: pendingOrders.length,
     filings: filings.length,
+    taxes: taxes.length,
+    receivables: receivables.length,
   };
 }

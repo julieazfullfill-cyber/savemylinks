@@ -1,3 +1,4 @@
+import { createJournal, postingDateFor } from "./journal";
 import { Prisma } from "@prisma/client";
 import { audit } from "./audit";
 import type { Tx } from "./db";
@@ -137,7 +138,7 @@ export async function postCashTxn(tx: Tx, input: CashTxnInput) {
   });
   assertBalanced(lines);
 
-  const journal = await tx.journalEntry.create({
+  const journal = await createJournal(tx, {
     data: {
       date: input.date,
       memo: input.description,
@@ -170,7 +171,7 @@ export async function postCashTxn(tx: Tx, input: CashTxnInput) {
 
 /**
  * Huỷ giao dịch: không xoá, không sửa đè — đánh dấu voidedAt và ghi bút toán ngược
- * (reversalOf trỏ về bút toán gốc) vào ngày `reverseOn` (mặc định ngày giao dịch gốc).
+ * (reversalOf trỏ về bút toán gốc) vào ngày `reverseOn` (mặc định ngày giao dịch gốc; kỳ đó đã đóng sổ thì hôm nay).
  */
 export async function voidCashTxn(tx: Tx, p: { id: string; actorId: string; reason: string; reverseOn?: Date }) {
   const before = await tx.cashTxn.findUniqueOrThrow({
@@ -190,9 +191,9 @@ export async function voidCashTxn(tx: Tx, p: { id: string; actorId: string; reas
     })),
   );
   assertBalanced(lines);
-  await tx.journalEntry.create({
+  await createJournal(tx, {
     data: {
-      date: p.reverseOn ?? before.date,
+      date: p.reverseOn ?? (await postingDateFor(tx, before.date)),
       memo: `Huỷ: ${before.description} — ${p.reason}`,
       source: "CASH_TXN",
       reversalOf: before.journal.id,

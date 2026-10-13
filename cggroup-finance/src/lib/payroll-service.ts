@@ -1,6 +1,7 @@
 // Kỳ lương trên DB — nối động cơ (payroll.ts) với chấm công, hợp đồng, KPI và sổ cái.
 // Quy trình: DRAFT -> CALCULATED -> APPROVED (sinh bút toán) -> PAID -> CLOSED.
 // Mọi hàm nhận `tx` — gọi bên trong prisma.$transaction.
+import { createJournal } from "./journal";
 import { audit } from "./audit";
 import { addDays, dayOfMonth } from "./dates";
 import type { Tx } from "./db";
@@ -201,7 +202,7 @@ export async function approvePeriod(tx: Tx, periodId: string, actorId: string) {
   const draft = buildPayrollJournal(period.lines);
   assertBalanced(draft);
   const [, monthEnd] = monthRange(period.year, period.month);
-  const journal = await tx.journalEntry.create({
+  const journal = await createJournal(tx, {
     data: {
       date: monthEnd,
       memo: `Lương tháng ${period.month}/${period.year}`,

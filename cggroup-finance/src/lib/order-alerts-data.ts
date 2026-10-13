@@ -48,5 +48,5 @@ export async function loadOrderAlerts(tx: Tx, today: Date): Promise<Alert[]> {
     now: addDays(today, 1),
   });
   // Không có đơn nào thì doanh thu ghi nhận = 0 → bỏ CASH_GAP/FF (chưa dùng import đơn).
-  return alerts.map((a) => ({ severity: SEV[a.level], title: a.title, detail: a.detail, href: HREF[a.code] ?? "/" }));
+  return alerts.map((a) => ({ code: a.code, severity: SEV[a.level], title: a.title, detail: a.detail, href: HREF[a.code] ?? "/" }));
 }

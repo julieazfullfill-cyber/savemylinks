@@ -62,7 +62,7 @@ export function flows(txns: { date: Date; direction: "IN" | "OUT"; amountVnd: bi
 // ------------------------------------------------------------- cảnh báo
 
 export type Severity = "crit" | "warn" | "info";
-export type Alert = { severity: Severity; title: string; detail: string; href: string };
+export type Alert = { severity: Severity; title: string; detail: string; href: string; /** GĐ4: mã cảnh báo (màn 28) */ code?: string };
 
 export type AlertInput = {
   today: Date;

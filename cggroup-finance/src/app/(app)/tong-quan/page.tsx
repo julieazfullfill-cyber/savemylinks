@@ -1,13 +1,10 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { addDays, fmtBizDate, startOfWeek, todayVn } from "@/lib/dates";
-import { monthlySpendByCategory } from "@/lib/expenses";
-import { buildForecast, firstWeekBelow } from "@/lib/forecast";
-import { loadOrderAlerts } from "@/lib/order-alerts-data";
-import { loadForecastInput } from "@/lib/forecast-data";
+import { loadAllAlerts, syncAlertLog } from "@/lib/alerts";
+import { addDays, fmtBizDate, todayVn } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { formatMoney, toVnd, type Currency } from "@/lib/money";
-import { balanceSeries, bookBalance, buildAlerts, compactVnd, flows, type LedgerTxn, type Severity } from "@/lib/overview";
+import { balanceSeries, bookBalance, compactVnd, flows, type LedgerTxn, type Severity } from "@/lib/overview";
 import { PageHead } from "../ui";
 import { BalanceChart } from "./balance-chart";
 
@@ -23,7 +20,7 @@ export default async function OverviewPage() {
   const from90 = addDays(today, -89);
   const from30 = addDays(today, -29);
 
-  const [accounts, txns, rates, closes, overdue] = await Promise.all([
+  const [accounts, txns, rates, closes] = await Promise.all([
     prisma.cashAccount.findMany({
       where: { active: true },
       include: { provider: true },
@@ -36,7 +33,6 @@ export default async function OverviewPage() {
     prisma.fxRate.findMany({ where: { base: "USD", quote: "VND" }, orderBy: { date: "asc" } }),
     // lần chốt số dư gần nhất của mỗi tài khoản (màn 5)
     prisma.accountBalance.findMany({ distinct: ["accountId"], orderBy: [{ accountId: "asc" }, { date: "desc" }] }),
-    prisma.supplierBill.findMany({ where: { dueDate: { lt: today }, status: { not: "PAID" } }, include: { supplier: true } }),
   ]);
 
   const ledger: LedgerTxn[] = txns.map((t) => ({ ...t, currency: t.currency as Currency }));
@@ -69,49 +65,9 @@ export default async function OverviewPage() {
     today,
   );
 
-  // Dự báo theo kịch bản & ngưỡng của lần lưu gần nhất ở màn 6 (chưa lưu → không có ngưỡng).
-  const snap = await prisma.forecastSnapshot.findFirst({ orderBy: { createdAt: "desc" } });
-  const sc = (snap?.scenario ?? null) as { revenueFactor?: number; ffRate?: number; floorVnd?: string } | null;
-  let forecastBreach: { week: number; from: Date; closingVnd: bigint; floorVnd: bigint } | null = null;
-  if (sc?.floorVnd && BigInt(sc.floorVnd) > 0n) {
-    const floorVnd = BigInt(sc.floorVnd);
-    const { input } = await prisma.$transaction((tx) =>
-      loadForecastInput(tx, { startDate: startOfWeek(today), scenario: { revenueFactor: sc.revenueFactor, ffRate: sc.ffRate } }),
-    );
-    const b = firstWeekBelow(buildForecast(input), floorVnd);
-    if (b) forecastBreach = { week: b.week, from: b.from, closingVnd: b.closing, floorVnd };
-  }
-
-  // Chi vượt ngân sách tháng này.
-  const [budgetCats, spend] = await Promise.all([
-    prisma.expenseCategory.findMany({ where: { active: true, budgetVnd: { not: null } } }),
-    prisma.$transaction((tx) => monthlySpendByCategory(tx, today.getUTCFullYear(), today.getUTCMonth() + 1)),
-  ]);
-  const overBudget = budgetCats
-    .filter((c) => (spend.get(c.id) ?? 0n) > c.budgetVnd!)
-    .map((c) => ({ name: c.name, usedVnd: spend.get(c.id)!, budgetVnd: c.budgetVnd! }));
-
-  // GĐ3: 5 cảnh báo đơn hàng / dòng tiền (30 ngày qua), gộp vào cùng danh sách, nặng xếp trước.
-  const orderAlerts = await prisma.$transaction((tx) => loadOrderAlerts(tx, today));
-  const RANK = { crit: 0, warn: 1, info: 2 } as const;
-  const baseAlerts = buildAlerts({
-    forecastBreach,
-    overBudget,
-    today,
-    accounts: rows.map((r) => ({
-      id: r.a.id,
-      code: r.a.code,
-      label: r.a.email ?? r.a.name,
-      currency: r.cur,
-      book: r.book,
-      txnCount: txns.filter((t) => t.accountId === r.a.id).length,
-      hasOpening: txns.some((t) => t.accountId === r.a.id && t.journal?.source === "OPENING"),
-      lastClose: r.close ? { date: r.close.date, available: r.close.available, bookAtDate: bookBalance(ledger, r.a.id, r.close.date) } : null,
-    })),
-    latestUsdRateDate: latestRate?.date ?? null,
-    overdueBills: overdue.map((b) => ({ supplier: b.supplier.name, dueDate: b.dueDate, outstandingVnd: b.amountVnd - b.paidVnd })),
-  });
-  const alerts = [...baseAlerts, ...orderAlerts].sort((a, b) => RANK[a.severity] - RANK[b.severity]);
+  // Mọi cảnh báo (tiền, dự báo, ngân sách, đơn hàng GĐ3, thuế / phải thu / đóng sổ GĐ4) — ghi lịch sử cho màn 28.
+  const alerts = await loadAllAlerts(prisma, today);
+  await syncAlertLog(prisma, alerts);
 
   const providers = [...new Map(rows.map((r) => [r.a.providerId, r.a.provider])).values()];
   const weekly = series.filter((_, i) => (series.length - 1 - i) % 7 === 0);

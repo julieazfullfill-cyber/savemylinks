@@ -2,6 +2,7 @@
 //   Nhận hoá đơn : Nợ TK chi phí (mặc định 501) / Có 201 Phải trả NCC.
 //   Trả tiền     : giao dịch tiền Nợ 201 / Có TK tiền (BillPayment nối hoá đơn ↔ CashTxn).
 //   Tất toán     : phần chênh do tỷ giá (hoá đơn USD trả ở tỷ giá khác) vào 701.
+import { createJournal } from "./journal";
 import { audit } from "./audit";
 import { addDays, daysBetween } from "./dates";
 import type { Tx } from "./db";
@@ -64,7 +65,7 @@ export async function createBill(tx: Tx, i: BillInput) {
     { accountCode: PAYABLE_GL, debitVnd: 0n, creditVnd: amountVnd },
   ];
   assertBalanced(lines);
-  const journal = await tx.journalEntry.create({
+  const journal = await createJournal(tx, {
     data: {
       date: i.issueDate,
       memo: `Hoá đơn ${supplier.name}${i.billNo ? ` số ${i.billNo}` : ""}`,
@@ -154,7 +155,7 @@ export async function payBill(tx: Tx, i: PayInput) {
               { accountCode: FX_DIFF_GL, debitVnd: -diff, creditVnd: 0n },
               { accountCode: PAYABLE_GL, debitVnd: 0n, creditVnd: -diff },
             ];
-      await tx.journalEntry.create({
+      await createJournal(tx, {
         data: { date: i.date, memo: `Tất toán chênh lệch HĐ ${bill.billNo ?? bill.id}`, source: "ADJUST", createdBy: i.actorId, lines: { create: lines } },
       });
       if (diff > 0n) {

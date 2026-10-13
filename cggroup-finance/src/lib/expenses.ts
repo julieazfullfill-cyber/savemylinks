@@ -4,6 +4,7 @@
 //   PAID    : Kế toán chi tiền → giao dịch tiền Nợ 201 / Có TK tiền; chênh tỷ giá vào 701
 //   REJECTED: từ chối, kèm lý do
 // Khoản chi trả ngay không cần duyệt thì nhập thẳng ở Sổ quỹ với hạng mục.
+import { createJournal } from "./journal";
 import type { Role } from "@prisma/client";
 import { audit } from "./audit";
 import { dayOfMonth } from "./dates";
@@ -54,7 +55,7 @@ export async function approveExpense(tx: Tx, p: { id: string; actorId: string; a
     { accountCode: PAYABLE_GL, debitVnd: 0n, creditVnd: before.amountVnd },
   ];
   assertBalanced(lines);
-  const journal = await tx.journalEntry.create({
+  const journal = await createJournal(tx, {
     data: { date: before.date, memo: `Chi phí: ${before.description}`, source: "EXPENSE", createdBy: p.actorId, lines: { create: lines } },
   });
   const after = await tx.expense.update({
@@ -114,7 +115,7 @@ export async function payExpense(
             { accountCode: FX_DIFF_GL, debitVnd: -diff, creditVnd: 0n },
             { accountCode: PAYABLE_GL, debitVnd: 0n, creditVnd: -diff },
           ];
-    await tx.journalEntry.create({
+    await createJournal(tx, {
       data: { date: p.date, memo: `Chênh lệch khi chi: ${before.description}`, source: "ADJUST", createdBy: p.actorId, lines: { create: lines } },
     });
   }

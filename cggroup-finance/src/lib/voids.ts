@@ -2,6 +2,7 @@
 // ledger.voidCashTxn gọi hàm này (import động để tránh vòng import ledger ↔ payables).
 import type { Tx } from "./db";
 import { recomputeBill } from "./payables";
+import { recomputeAr } from "./receivables";
 
 export async function afterCashTxnVoided(tx: Tx, cashTxnId: string) {
   const bp = await tx.billPayment.findUnique({ where: { cashTxnId } });
@@ -13,6 +14,11 @@ export async function afterCashTxnVoided(tx: Tx, cashTxnId: string) {
 
   // Payout đã ghi bằng giao dịch này → gỡ liên kết, ghi lại được (GĐ3).
   await tx.payout.updateMany({ where: { cashTxnId }, data: { cashTxnId: null } });
+
+  // GĐ4: lần thu phải thu / nộp thuế bằng giao dịch này
+  const rec = await tx.arReceipt.findUnique({ where: { cashTxnId } });
+  if (rec) await recomputeAr(tx, rec.invoiceId);
+  await tx.taxObligation.updateMany({ where: { cashTxnId }, data: { cashTxnId: null, paidVnd: 0n, status: "OPEN" } });
 
   // Kỳ lương đã chi bằng giao dịch này → quay về APPROVED (kỳ CLOSED: trigger chặn, không huỷ được).
   const period = await tx.payrollPeriod.findUnique({ where: { paidCashTxnId: cashTxnId } });

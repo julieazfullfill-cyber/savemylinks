@@ -121,6 +121,7 @@ model LegalEntity {
 
   cashAccounts CashAccount[]
   filings      EntityFiling[]
+  taxes        TaxObligation[]
 }
 
 /// Hệ thống tài khoản nội bộ — 35 tài khoản tự đặt.
@@ -144,6 +145,7 @@ model ExpenseCategory {
   active      Boolean @default(true)
 
   expenses Expense[]
+  budgets  Budget[]
   txns     CashTxn[]
 }
 
@@ -909,4 +911,194 @@ model ImportBatch {
   note       String?
 
   orders Order[]
+}
+
+// ═══════════════════════ GĐ4 — sổ cái, phân bổ, kiểm tra, đóng sổ ═══════════════════════
+
+enum ClosingStatus {
+  OPEN
+  CHECKING
+  CLOSED
+}
+
+enum CheckLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+/// Quy tắc phân bổ chi phí chung (màn 26): các TK trong "rổ" chia về từng shop.
+model AllocationRule {
+  id             String   @id @default(cuid())
+  name           String
+  /// Account.code các TK cần phân bổ (60x)
+  sourceAccounts String[]
+  /// REVENUE | HEADCOUNT | EQUAL
+  basis          String   @default("REVENUE")
+  /// SHOP (team tính ra từ shop → người phụ trách → phòng ban)
+  dimension      String   @default("SHOP")
+  active         Boolean  @default(true)
+
+  runs AllocationRun[]
+}
+
+model AllocationRun {
+  id        String         @id @default(cuid())
+  ruleId    String
+  rule      AllocationRule @relation(fields: [ruleId], references: [id])
+  year      Int
+  month     Int
+  poolVnd   BigInt
+  journalId String?        @unique
+  createdBy String?
+  createdAt DateTime       @default(now())
+
+  @@unique([ruleId, year, month])
+}
+
+/// Đóng sổ tháng (màn 27). CLOSED: trigger chặn mọi bút toán mới trong tháng.
+model PeriodClosing {
+  id     String        @id @default(cuid())
+  year   Int
+  month  Int
+  status ClosingStatus @default(OPEN)
+
+  revenueVnd BigInt?
+  cogsVnd    BigInt?
+  expenseVnd BigInt?
+  profitVnd  BigInt?
+
+  /// Bút toán kết chuyển lãi lỗ về 302
+  journalId String?   @unique
+  closedBy  String?
+  closedAt  DateTime?
+
+  checks DataCheckRun[]
+
+  @@unique([year, month])
+}
+
+model DataCheckRun {
+  id        String         @id @default(cuid())
+  runAt     DateTime       @default(now())
+  runBy     String?
+  year      Int
+  month     Int
+  closingId String?
+  closing   PeriodClosing? @relation(fields: [closingId], references: [id])
+  passed    Int            @default(0)
+  failed    Int            @default(0)
+
+  results DataCheckResult[]
+
+  @@index([year, month])
+}
+
+model DataCheckResult {
+  id         String       @id @default(cuid())
+  runId      String
+  run        DataCheckRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  code       String
+  level      CheckLevel
+  title      String
+  detail     String
+  diffVnd    BigInt?
+  href       String?
+  resolved   Boolean      @default(false)
+  resolvedBy String?
+  resolvedAt DateTime?
+  note       String?
+
+  @@index([runId, level])
+}
+
+/// Lịch sử cảnh báo (màn 28). Mỗi cảnh báo đang bắn là một dòng mở; hết bắn thì resolvedAt.
+model AlertLog {
+  id             String     @id @default(cuid())
+  firedAt        DateTime   @default(now())
+  code           String
+  /// khoá nhận diện (code + tiêu đề) để không mở trùng
+  key            String
+  level          CheckLevel
+  title          String
+  detail         String
+  href           String?
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+
+  @@index([firedAt])
+  @@index([code, resolvedAt])
+  @@index([key, resolvedAt])
+}
+
+/// Ngân sách theo tháng; tháng không có dòng thì dùng ExpenseCategory.budgetVnd.
+model Budget {
+  id         String          @id @default(cuid())
+  year       Int
+  month      Int
+  categoryId String
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id])
+  amountVnd  BigInt
+
+  @@unique([year, month, categoryId])
+}
+
+/// Thuế HKD, TNCN, BHXH… — có lịch, số tiền, đi vào dự báo; nộp = giao dịch chi.
+model TaxObligation {
+  id          String       @id @default(cuid())
+  entityId    String?
+  entity      LegalEntity? @relation(fields: [entityId], references: [id])
+  kind        String // THUE_HKD | TNCN | BHXH | LLC_RENEWAL | KHAC
+  periodLabel String
+  dueDate     DateTime     @db.Date
+  amountVnd   BigInt
+  paidVnd     BigInt       @default(0)
+  status      String       @default("OPEN") // OPEN | PARTIAL | PAID
+  cashTxnId   String?
+  createdBy   String?
+
+  @@index([dueDate, status])
+}
+
+/// Phải thu: ghi nhận Nợ 131 / Có accountCode; thu tiền Nợ TK tiền / Có 131.
+model ArInvoice {
+  id           String   @id @default(cuid())
+  counterparty String
+  issueDate    DateTime @db.Date
+  dueDate      DateTime @db.Date
+  amountVnd    BigInt
+  paidVnd      BigInt   @default(0)
+  status       String   @default("OPEN") // OPEN | PARTIAL | PAID
+  note         String?
+  /// Bổ sung: TK ghi Có khi ghi nhận (409 thu khác, 501 hoàn từ NCC…)
+  accountCode  String   @default("409")
+  journalId    String?  @unique
+  createdBy    String?
+
+  receipts ArReceipt[]
+
+  @@index([dueDate, status])
+}
+
+/// Bổ sung: mỗi lần thu tiền phải thu (thu nhiều lần). Huỷ giao dịch tiền → paidVnd tính lại.
+model ArReceipt {
+  id        String    @id @default(cuid())
+  invoiceId String
+  invoice   ArInvoice @relation(fields: [invoiceId], references: [id])
+  cashTxnId String    @unique
+  amountVnd BigInt
+  createdAt DateTime  @default(now())
+}
+
+/// Ảnh chụp báo cáo lúc đóng sổ — so sánh về sau, không tính lại.
+model ReportSnapshot {
+  id        String   @id @default(cuid())
+  kind      String // PNL | BALANCE
+  year      Int
+  month     Int
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@unique([kind, year, month])
 }

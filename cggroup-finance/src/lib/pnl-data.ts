@@ -10,6 +10,6 @@ export async function loadLedgerRows(db: Pick<Tx, "$queryRaw">, from: Date, to: 
     FROM "JournalLine" l
     JOIN "JournalEntry" e ON e.id = l."entryId"
     JOIN "Account" a ON a.code = l."accountCode"
-    WHERE e."date" BETWEEN ${from} AND ${to} AND a."type" IN ('REVENUE', 'COGS', 'EXPENSE', 'OTHER')
+    WHERE e."date" BETWEEN ${from} AND ${to} AND a."type" IN ('REVENUE', 'COGS', 'EXPENSE', 'OTHER') AND e.source <> 'CLOSING'
     GROUP BY 1, 2, 3, 4`);
 }

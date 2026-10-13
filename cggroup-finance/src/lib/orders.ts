@@ -176,7 +176,7 @@ export async function monthlyFixedCostUsd(tx: Tx, year: number, month: number): 
   const from = dayOfMonth(year, month - 1, 1);
   const to = dayOfMonth(year, month - 1, 31);
   const agg = await tx.journalLine.aggregate({
-    where: { entry: { date: { gte: from, lte: to } }, account: { type: "EXPENSE" } },
+    where: { entry: { date: { gte: from, lte: to }, source: { not: "CLOSING" } }, account: { type: "EXPENSE" } },
     _sum: { debitVnd: true, creditVnd: true },
   });
   const vnd = (agg._sum.debitVnd ?? 0n) - (agg._sum.creditVnd ?? 0n);
