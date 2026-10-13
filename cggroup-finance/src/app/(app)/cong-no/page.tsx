@@ -6,8 +6,9 @@ import { formatMoney, type Currency } from "@/lib/money";
 import { AGING_LABEL, agingBucket, type AgingBucket } from "@/lib/payables";
 import { Badge, Field, Flash, PageHead } from "../ui";
 import { createBillAction, payBillAction } from "./actions";
+import { ReceivablesTab, TabBar, TaxTab } from "./tabs";
 
-type SP = { sup?: string; st?: string; soon?: string; ok?: string; error?: string };
+type SP = { tab?: string; sup?: string; st?: string; soon?: string; ok?: string; error?: string };
 const STATUS_LABEL = { OPEN: "Chưa trả", PARTIAL: "Trả một phần", PAID: "Đã trả" } as const;
 const BUCKET_TONE: Record<AgingBucket, "muted" | "accent" | "crit"> = {
   NOT_DUE: "muted",
@@ -20,6 +21,8 @@ const BUCKET_TONE: Record<AgingBucket, "muted" | "accent" | "crit"> = {
 export default async function PayablesPage({ searchParams }: { searchParams: Promise<SP> }) {
   await requireUser(["ADMIN", "KE_TOAN"]);
   const sp = await searchParams;
+  if (sp.tab === "phai-thu") return <ReceivablesTab ok={sp.ok} error={sp.error} />;
+  if (sp.tab === "thue") return <TaxTab ok={sp.ok} error={sp.error} />;
   const today = todayVn();
   const st = sp.st ?? "OWED";
 
@@ -52,6 +55,7 @@ export default async function PayablesPage({ searchParams }: { searchParams: Pro
   return (
     <div className="max-w-7xl">
       <PageHead no={4} title="Công nợ nhà cung cấp" />
+      <TabBar tab="" />
       <Flash ok={sp.ok} error={sp.error} />
 
       {/* Tuổi nợ */}

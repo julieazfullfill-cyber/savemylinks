@@ -3,7 +3,7 @@
 //   Thu tiền:           Nợ TK tiền / Có 131 (giao dịch sổ quỹ, mỗi lần thu một ArReceipt)
 //   Nộp thuế:           Nợ 204 (TNCN) | 203 (BHXH) | 608 (thuế HKD, duy trì pháp nhân, khác) / Có TK tiền
 import { audit } from "./audit";
-import { daysBetween } from "./dates";
+import { AGING_LABEL, agingBucket, type AgingBucket } from "./payables";
 import type { Tx } from "./db";
 import { createJournal } from "./journal";
 import { assertBalanced, postCashTxn } from "./ledger";
@@ -22,19 +22,15 @@ const statusOf = (amount: bigint, paid: bigint) => (paid <= 0n ? "OPEN" : paid >
 
 // ─────────────────────────── tuổi nợ
 
-export const AGING_BUCKETS = ["Chưa đến hạn", "1–30 ngày", "31–60 ngày", "61–90 ngày", "> 90 ngày"] as const;
+const BUCKETS: AgingBucket[] = ["NOT_DUE", "D1_30", "D31_60", "D61_90", "D90_PLUS"];
 
-/** Chia số còn nợ theo số ngày quá hạn tính đến `asOf`. */
+/** Chia số còn phải thu theo số ngày quá hạn tính đến `asOf` — cùng mốc với công nợ NCC (payables.agingBucket). */
 export function agingBuckets(items: { dueDate: Date; outstandingVnd: bigint }[], asOf: Date): bigint[] {
-  const out = AGING_BUCKETS.map(() => 0n);
-  for (const i of items) {
-    if (i.outstandingVnd <= 0n) continue;
-    const late = daysBetween(i.dueDate, asOf);
-    const k = late <= 0 ? 0 : late <= 30 ? 1 : late <= 60 ? 2 : late <= 90 ? 3 : 4;
-    out[k] += i.outstandingVnd;
-  }
+  const out = BUCKETS.map(() => 0n);
+  for (const i of items) if (i.outstandingVnd > 0n) out[BUCKETS.indexOf(agingBucket(i.dueDate, asOf))] += i.outstandingVnd;
   return out;
 }
+export const AGING_COLUMNS = BUCKETS.map((b) => AGING_LABEL[b]);
 
 // ─────────────────────────── phải thu
 
