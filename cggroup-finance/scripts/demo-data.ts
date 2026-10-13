@@ -16,6 +16,11 @@ import { postCashTxn } from "../src/lib/ledger";
 import { createBill, payBill } from "../src/lib/payables";
 import { approvePeriod, calculatePeriod, createPeriod, payPeriod, setAdjustment } from "../src/lib/payroll-service";
 import { toJsonSafe } from "../src/lib/db";
+import { loadAllAlerts, syncAlertLog } from "../src/lib/alerts";
+import { runAllocation, saveRule } from "../src/lib/allocation-service";
+import { closePeriod, runChecks } from "../src/lib/closing-service";
+import { postManualJournal } from "../src/lib/manual-journal";
+import { createAr, createTax } from "../src/lib/receivables";
 import type { NormalizedOrder } from "../src/lib/order-import";
 import { addFulfillment, importOrders, recomputeOrderCosts } from "../src/lib/orders";
 import { createPayout, postPayout } from "../src/lib/payouts";
@@ -201,11 +206,54 @@ async function main() {
   await db.$transaction((tx) => changeShopStatus(tx, { shopId: shops[1].id, toStatus: "SUSPENDED", at: addDays(today, -6), note: "Amazon: policy warning, đang kháng nghị", actorId: A }));
   await db.$transaction((tx) => addFiling(tx, { entityId: entity.id, kind: "RENEWAL", dueDate: addDays(today, 18), amountVnd: 12_000_000n, actorId: A }));
 
+  // ------------------------------------------------------------------ GĐ4
+  const prevM = today.getUTCMonth() === 0 ? { y: today.getUTCFullYear() - 1, m: 12 } : { y: today.getUTCFullYear(), m: today.getUTCMonth() };
+  const old = prevM.m === 1 ? { y: prevM.y - 1, m: 12 } : { y: prevM.y, m: prevM.m - 1 };
+  const rule = await db.$transaction((tx) => saveRule(tx, { name: "Văn phòng + VPS + công cụ", sourceAccounts: ["603", "604", "605"], basis: "REVENUE", active: true, actorId: A }));
+  const cogsRule = await db.$transaction((tx) => saveRule(tx, { name: "Giá vốn fulfillment về shop", sourceAccounts: ["501"], basis: "FF_COST", active: true, actorId: A }));
+  for (const p of [old, prevM]) {
+    for (const r of [rule, cogsRule]) {
+      await db.$transaction((tx) => runAllocation(tx, { ruleId: r.id, year: p.y, month: p.m, actorId: A })).catch((e: Error) => console.log(`Phân bổ ${r.name} ${p.m}/${p.y}: ${e.message}`));
+    }
+  }
+  await db.$transaction(async (tx) => {
+    await createAr(tx, { counterparty: "Anh Tuấn — thuê TK Etsy", issueDate: addDays(today, -50), dueDate: addDays(today, -35), amountVnd: 15_000_000n, accountCode: "409", actorId: A });
+    await createAr(tx, { counterparty: "Merchize hoàn tiền in lỗi", issueDate: addDays(today, -8), dueDate: addDays(today, 7), amountVnd: 4_200_000n, accountCode: "501", actorId: A });
+    await createTax(tx, { kind: "THUE_HKD", periodLabel: `Q3/${today.getUTCFullYear()}`, dueDate: addDays(today, 5), amountVnd: 9_500_000n, entityId: null, actorId: A });
+    await createTax(tx, { kind: "TNCN", periodLabel: `${prevM.m}/${prevM.y}`, dueDate: addDays(today, 7), amountVnd: 3_150_000n, entityId: null, actorId: A });
+    await postManualJournal(tx, {
+      date: addDays(today, -3),
+      memo: "Phân loại lại: phí booking KOL ghi nhầm vào chi phí khác",
+      lines: [
+        { accountCode: "606", debitVnd: 2_500_000n, creditVnd: 0n },
+        { accountCode: "699", debitVnd: 0n, creditVnd: 2_500_000n },
+      ],
+      actorId: A,
+    });
+  });
+  const vps = await db.expenseCategory.findUniqueOrThrow({ where: { code: "VPS_TOOL" } });
+  await db.budget.create({ data: { year: today.getUTCFullYear(), month: today.getUTCMonth() + 1, categoryId: vps.id, amountVnd: 12_000_000n } });
+
+  // Đóng sổ tháng cũ: nhập số dư chốt cuối tháng = sổ quỹ, chạy kiểm tra, đóng (in lý do nếu bị chặn)
+  const oldEnd = new Date(Date.UTC(old.y, old.m, 0));
+  const live = await db.cashTxn.findMany({ where: { voidedAt: null, date: { lte: oldEnd } } });
+  for (const accountId of new Set(live.map((t) => t.accountId))) {
+    const bal = live.filter((t) => t.accountId === accountId).reduce((s, t) => s + (t.direction === "IN" ? t.amount : -t.amount), 0n);
+    await db.accountBalance.upsert({ where: { accountId_date: { accountId, date: oldEnd } }, create: { accountId, date: oldEnd, available: bal }, update: { available: bal } });
+  }
+  await db.$transaction((tx) => closePeriod(tx, { year: old.y, month: old.m, actorId: A }), { timeout: 60_000 }).then(
+    () => console.log(`Đã đóng sổ ${old.m}/${old.y}.`),
+    (e: Error) => console.log(`Đóng sổ ${old.m}/${old.y} bị chặn: ${e.message}`),
+  );
+  await db.$transaction((tx) => runChecks(tx, { year: old.y, month: old.m, actorId: A }), { timeout: 60_000 });
+  await db.$transaction((tx) => runChecks(tx, { year: prevM.y, month: prevM.m, actorId: A }), { timeout: 60_000 });
+
   const start = startOfWeek(today);
   const { input } = await db.$transaction((tx) => loadForecastInput(tx, { startDate: start }));
   await db.forecastSnapshot.create({
     data: { weekStart: start, scenario: { name: "Cơ sở", revenueFactor: 1, ffRate: input.scenario.ffRate, floorVnd: "400000000" }, rows: toJsonSafe(buildForecast(input)) as object, createdBy: A },
   });
+  await syncAlertLog(db, await loadAllAlerts(db, today));
   console.log("Đã tạo dữ liệu mẫu.");
 }
 

@@ -35,6 +35,10 @@ describe("phân bổ (allocation.ts)", () => {
     expect([...a.values()].reduce((x, y) => x + y, 0n)).toBe(100n);
     expect([...a.values()].sort()).toEqual([33n, 33n, 34n]);
   });
+  it("chia giá vốn theo giá vốn fulfillment thực của shop", () => {
+    const t = allocationTable(1_000n, [{ id: "a", name: "A", ffVnd: 300n }, { id: "b", name: "B", ffVnd: 100n }, { id: "c", name: "C" }], "FF_COST");
+    expect(t.lines.map((l) => [l.targetId, l.amountVnd])).toEqual([["a", 750n], ["b", 250n]]);
+  });
   it("trọng số 0 không nhận; pool 0 → rỗng", () => {
     const t = allocationTable(1_000n, [{ id: "a", name: "A", revenueVnd: 0n }, { id: "b", name: "B", revenueVnd: 5n }], "REVENUE");
     expect(t.lines.map((l) => [l.targetId, l.amountVnd])).toEqual([["b", 1_000n]]);

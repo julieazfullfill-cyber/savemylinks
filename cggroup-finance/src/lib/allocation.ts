@@ -2,12 +2,13 @@
 // Không có bước này thì biên lãi từng shop là ảo: chi phí văn phòng, VPS, lương bộ phận hỗ trợ
 // không được tính vào đâu.
 
-export type Basis = "REVENUE" | "HEADCOUNT" | "EQUAL";
+export type Basis = "REVENUE" | "HEADCOUNT" | "EQUAL" | "FF_COST";
 
 export const BASIS_VI: Record<Basis, string> = {
   REVENUE: "Theo tỷ trọng doanh thu",
   HEADCOUNT: "Theo số người của team phụ trách",
   EQUAL: "Chia đều",
+  FF_COST: "Theo giá vốn fulfillment của shop (đơn fulfill GĐ3)",
 };
 
 export type Target = {
@@ -17,6 +18,8 @@ export type Target = {
   revenueVnd?: bigint;
   /** số người — dùng khi basis = HEADCOUNT */
   headcount?: number;
+  /** Bổ sung: giá vốn fulfillment kỳ này (đơn fulfill của shop) — dùng khi basis = FF_COST */
+  ffVnd?: bigint;
 };
 
 export function computeWeights(targets: Target[], basis: Basis): Map<string, number> {
@@ -24,6 +27,7 @@ export function computeWeights(targets: Target[], basis: Basis): Map<string, num
   for (const t of targets) {
     if (basis === "REVENUE") w.set(t.id, Number(t.revenueVnd ?? 0n));
     else if (basis === "HEADCOUNT") w.set(t.id, t.headcount ?? 0);
+    else if (basis === "FF_COST") w.set(t.id, Number(t.ffVnd ?? 0n));
     else w.set(t.id, 1);
   }
   return w;

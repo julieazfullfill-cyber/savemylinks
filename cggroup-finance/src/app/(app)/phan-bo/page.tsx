@@ -93,7 +93,7 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
                               <tr key={s.targetId}><td>{s.name}</td><td className="text-right tabular-nums">{pct(s.sharePct)}</td><td className="text-right tabular-nums">{formatMoney(s.amountVnd)}</td></tr>
                             ))}
                             {!pv.byShop.length && (
-                              <tr><td colSpan={3} className="py-3 text-center text-crit">Không shop nào có trọng số &gt; 0 ({r.basis === "REVENUE" ? "chưa có doanh thu trong tháng" : "chưa gán người phụ trách ở màn 16"}).</td></tr>
+                              <tr><td colSpan={3} className="py-3 text-center text-crit">Không shop nào có trọng số &gt; 0 ({r.basis === "REVENUE" ? "chưa có doanh thu trong tháng" : r.basis === "FF_COST" ? "chưa có đơn fulfill trong tháng (màn 20, 21)" : "chưa gán người phụ trách ở màn 16"}).</td></tr>
                             )}
                             <tr className="font-semibold"><td>Tổng</td><td /><td className="text-right tabular-nums">{formatMoney(pv.byShop.reduce((a, s) => a + s.amountVnd, 0n))}</td></tr>
                           </tbody>

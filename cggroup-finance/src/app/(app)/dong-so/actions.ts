@@ -47,6 +47,10 @@ export async function closeAction(thang: string) {
     const r = await prisma.$transaction((tx) => closePeriod(tx, { ...ym(thang), actorId: me.uid }), TX);
     profit = r.pnl.netProfitVnd;
   } catch (e) {
+    // Đóng sổ thất bại thì cả transaction rollback, mất luôn lần kiểm tra vừa chạy —
+    // chạy lại riêng để màn hình hiện đúng lỗi đang chặn.
+    await prisma.$transaction((tx) => runChecks(tx, { ...ym(thang), actorId: me.uid }), TX).catch(() => null);
+    revalidatePath("/dong-so");
     return back(thang, `error=${msg(e)}`);
   }
   revalidatePath("/", "layout");

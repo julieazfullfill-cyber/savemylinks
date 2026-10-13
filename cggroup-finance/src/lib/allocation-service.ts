@@ -32,6 +32,13 @@ export async function loadTargets(tx: Tx, year: number, month: number): Promise<
     }),
   ]);
   const rev = new Map(revenue.map((r) => [r.shopId!, (r._sum.creditVnd ?? 0n) - (r._sum.debitVnd ?? 0n)]));
+  // Giá vốn fulfillment theo shop: đơn fulfill gửi NCC trong tháng (cent USD — chỉ cần tỷ trọng, không cần quy VND)
+  const ffs = await tx.fulfillmentOrder.findMany({
+    where: { submittedAt: { gte: from, lte: to }, order: { status: { not: "CANCELLED" } } },
+    select: { costUsd: true, shipUsd: true, order: { select: { shopId: true } } },
+  });
+  const ff = new Map<string, bigint>();
+  for (const f of ffs) ff.set(f.order.shopId, (ff.get(f.order.shopId) ?? 0n) + BigInt(Math.round((Number(f.costUsd) + Number(f.shipUsd)) * 100)));
   const deptOfUser = new Map(employees.filter((e) => e.userId).map((e) => [e.userId!, e.departmentId]));
   const deptSize = new Map<string, number>();
   for (const e of employees) if (e.departmentId) deptSize.set(e.departmentId, (deptSize.get(e.departmentId) ?? 0) + 1);
@@ -46,6 +53,7 @@ export async function loadTargets(tx: Tx, year: number, month: number): Promise<
       code: s.code,
       name: `${s.code} · ${s.name}`,
       revenueVnd: rev.get(s.id) ?? 0n,
+      ffVnd: ff.get(s.id) ?? 0n,
       // số người của team chia đều cho các shop của team
       headcount: d ? (deptSize.get(d) ?? 0) / (shopsPerDept.get(d) ?? 1) : 0,
     };

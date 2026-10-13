@@ -80,10 +80,12 @@ export async function DimensionSection({ thang, chieu, year }: { thang: string; 
           </tbody>
         </table>
       </div>
-      {unassigned && chieu !== "entity" && unassigned.pnl.expenseVnd > 0n && (
+      {unassigned && chieu !== "entity" && (unassigned.pnl.expenseVnd > 0n || unassigned.pnl.cogsVnd > 0n) && (
         <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm">
-          ⚠ {formatMoney(unassigned.pnl.expenseVnd)} chi phí chưa gắn shop (văn phòng, lương, công cụ…) đang nằm ở cột “Chưa gắn” — lãi từng {chieu === "team" ? "team" : "shop"} còn đang
-          ảo. <Link className="text-accent hover:underline" href={`/phan-bo?thang=${thang}`}>Chạy phân bổ chi phí chung</Link>
+          ⚠ Cột “Chưa gắn” còn {unassigned.pnl.cogsVnd > 0n && <>{formatMoney(unassigned.pnl.cogsVnd)} giá vốn (hoá đơn NCC không ghi theo shop)</>}
+          {unassigned.pnl.cogsVnd > 0n && unassigned.pnl.expenseVnd > 0n && " và "}
+          {unassigned.pnl.expenseVnd > 0n && <>{formatMoney(unassigned.pnl.expenseVnd)} chi phí chung (văn phòng, lương, công cụ…)</>} — lãi từng {chieu === "team" ? "team" : "shop"} còn
+          đang ảo. <Link className="text-accent hover:underline" href={`/phan-bo?thang=${thang}`}>Chạy phân bổ</Link> (giá vốn nên chia theo giá vốn fulfillment của shop).
         </p>
       )}
       {chieu === "team" && <p className="mt-1 text-xs text-muted">Team = phòng ban của người phụ trách shop (màn 16). Shop chưa có người phụ trách nằm ở “Chưa gắn”.</p>}
