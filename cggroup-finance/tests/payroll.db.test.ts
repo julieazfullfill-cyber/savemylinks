@@ -10,7 +10,10 @@ import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { addDays, parseBizDate as d } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { addContract } from "@/lib/hr";
-import { approvePeriod, calculatePeriod, createPeriod, salaryAt, suggestStandardDays } from "@/lib/payroll-service";
+import { voidCashTxn } from "@/lib/ledger";
+import {
+  approvePeriod, calculatePeriod, closePeriod, createPeriod, overrideHeldBonus, payPeriod, salaryAt, setAdjustment, suggestStandardDays,
+} from "@/lib/payroll-service";
 import { seedCatalog } from "../prisma/seed-data";
 import { seedPhase2 } from "../prisma/seed-phase2";
 
@@ -160,5 +163,53 @@ describe("chốt chặn GĐ2 khác", () => {
     await expect(prisma.attendanceDay.create({ data: { employeeId: ids.NV01, date: d("2026-09-01"), value: 0.7 } })).rejects.toThrow(
       /attendance_value/,
     );
+  });
+});
+
+describe("vòng đời kỳ lương tháng 9/2026", () => {
+  it("điều chỉnh + phê duyệt vượt cấp → tính → duyệt → chi (Nợ 202) → huỷ chi về APPROVED → chi lại → khoá", async () => {
+    await seedCatalog(prisma);
+    const bank = (await prisma.cashAccount.findUniqueOrThrow({ where: { code: "BANKVN" } })).id;
+    await prisma.kpiResult.create({
+      data: { employeeId: ids.NV15, year: 2026, month: 9, cashReceivedUsd: 0, ffCostUsd: 0, profitUsd: 0, targetUsd: 0, achievedPct: 0, bonusVnd: 1_000_000n },
+    });
+    const period = await prisma.$transaction((tx) =>
+      createPeriod(tx, { year: 2026, month: 9, standardDays: 24, companyProfitVnd: -1n, actorId: "kt" }),
+    );
+    await prisma.$transaction((tx) =>
+      setAdjustment(tx, { periodId: period.id, employeeId: ids.NV01, perfPayVnd: 500_000n, penaltyVnd: 100_000n, note: "KPI tốt, đi muộn", actorId: "kt" }),
+    );
+    await prisma.$transaction((tx) => overrideHeldBonus(tx, { periodId: period.id, actorId: "admin" }));
+
+    // Chưa chấm công tháng 9: lương 0 nhưng vẫn trừ BHXH → thực nhận âm → chặn, nêu tên.
+    await expect(prisma.$transaction((tx) => calculatePeriod(tx, period.id, "kt"))).rejects.toThrow(/Thực nhận âm.*NV01/);
+
+    const sep: Date[] = [];
+    for (let x = d("2026-09-01"); sep.length < 24; x = addDays(x, 1)) if (x.getUTCDay() !== 0) sep.push(x);
+    await prisma.attendanceDay.createMany({
+      data: [ids.NV01, ids.NV15, ids.NV23].flatMap((employeeId) => sep.map((date) => ({ employeeId, date, value: 1 }))),
+    });
+    await prisma.$transaction((tx) => calculatePeriod(tx, period.id, "kt"));
+
+    const lines = await prisma.payrollLine.findMany({ where: { periodId: period.id }, include: { employee: true } });
+    const by = Object.fromEntries(lines.map((l) => [l.employee.code, l]));
+    expect(by.NV01).toMatchObject({ perfPayVnd: 500_000n, penaltyVnd: 100_000n });
+    expect(by.NV15).toMatchObject({ salesBonusVnd: 1_000_000n, bonusHeldVnd: 0n }); // vượt cấp → chi dù lỗ
+
+    const { totals } = await prisma.$transaction((tx) => approvePeriod(tx, period.id, "gd"));
+    await expect(prisma.$transaction((tx) => closePeriod(tx, { periodId: period.id, actorId: "kt" }))).rejects.toThrow(/đã chi/);
+
+    const paid = await prisma.$transaction((tx) => payPeriod(tx, { periodId: period.id, accountId: bank, date: d("2026-10-05"), actorId: "kt" }));
+    expect(paid.txn.amountVnd).toBe(totals.netVnd);
+    const pl = await prisma.journalLine.findMany({ where: { entryId: paid.txn.journalId! } });
+    expect(pl.find((l) => l.accountCode === "202")?.debitVnd).toBe(totals.netVnd);
+
+    await prisma.$transaction((tx) => voidCashTxn(tx, { id: paid.txn.id, actorId: "kt", reason: "chi nhầm TK" }));
+    expect((await prisma.payrollPeriod.findUniqueOrThrow({ where: { id: period.id } })).status).toBe("APPROVED");
+
+    const again = await prisma.$transaction((tx) => payPeriod(tx, { periodId: period.id, accountId: bank, date: d("2026-10-05"), actorId: "kt" }));
+    await prisma.$transaction((tx) => closePeriod(tx, { periodId: period.id, actorId: "kt" }));
+    // kỳ đã khoá: không huỷ được giao dịch chi
+    await expect(prisma.$transaction((tx) => voidCashTxn(tx, { id: again.txn.id, actorId: "kt", reason: "x" }))).rejects.toThrow(/CLOSED/);
   });
 });

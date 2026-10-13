@@ -10,4 +10,8 @@ export async function afterCashTxnVoided(tx: Tx, cashTxnId: string) {
   // Đề nghị chi đã chi bằng giao dịch này → quay về APPROVED, chi lại được.
   const exp = await tx.expense.findUnique({ where: { cashTxnId } });
   if (exp) await tx.expense.update({ where: { id: exp.id }, data: { status: "APPROVED", cashTxnId: null } });
+
+  // Kỳ lương đã chi bằng giao dịch này → quay về APPROVED (kỳ CLOSED: trigger chặn, không huỷ được).
+  const period = await tx.payrollPeriod.findUnique({ where: { paidCashTxnId: cashTxnId } });
+  if (period) await tx.payrollPeriod.update({ where: { id: period.id }, data: { status: "APPROVED", paidAt: null, paidCashTxnId: null } });
 }

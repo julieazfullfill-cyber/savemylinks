@@ -26,6 +26,20 @@
   --font-sans: var(--font-be-vietnam), system-ui, sans-serif;
 }
 
+/* In phiếu lương: chỉ in nội dung, bỏ menu và nút. */
+@media print {
+  aside,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  main {
+    padding: 0 !important;
+  }
+}
+
 body {
   background: var(--page);
   color: var(--ink);

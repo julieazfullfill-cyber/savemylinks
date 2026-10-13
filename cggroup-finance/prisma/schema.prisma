@@ -563,6 +563,8 @@ model PayrollPeriod {
   bonusOverrideBy  String?
   bonusOverrideAt  DateTime?
   paidAt           DateTime?
+  /// Bổ sung: giao dịch chi lương (Nợ 202) — huỷ giao dịch này thì kỳ quay về APPROVED.
+  paidCashTxnId    String?       @unique
 
   adjustments PayrollAdjustment[]
 
