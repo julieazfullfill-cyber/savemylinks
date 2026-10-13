@@ -15,7 +15,8 @@
     "test": "dotenv -e .env.test -- vitest run",
     "payroll:selftest": "tsx scripts/payroll-selftest.ts",
     "phase3:selftest": "tsx scripts/phase3-selftest.ts",
-    "phase4:selftest": "tsx scripts/phase4-selftest.ts"
+    "phase4:selftest": "tsx scripts/phase4-selftest.ts",
+    "alerts:daily": "tsx scripts/daily-alerts.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
