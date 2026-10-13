@@ -10,7 +10,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   NHAN_VIEN: "Nhân viên",
 };
 
-export type Screen = { no: number; href: string; label: string; roles: Role[]; phase: 1 | 2 | 3; week: number; built?: boolean };
+export type Screen = { no: number; href: string; label: string; roles: Role[]; phase: 1 | 2 | 3 | 4; week: number; built?: boolean };
 
 const ALL: Role[] = ["ADMIN", "KE_TOAN", "QUAN_LY", "NHAN_VIEN"];
 // Đặc tả GĐ2 ghi "HR" — hệ thống chưa có vai trò HR (không sửa enum của GĐ1),
@@ -42,6 +42,12 @@ export const SCREENS: Screen[] = [
   { no: 21, href: "/don-hang", label: "Đơn hàng", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 3, week: 4, built: true },
   { no: 22, href: "/doi-soat", label: "Đối soát payout", roles: ["ADMIN", "KE_TOAN"], phase: 3, week: 7, built: true },
   { no: 23, href: "/bien-lai", label: "Biên lãi theo shop", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 3, week: 6, built: true },
+  // GĐ4 — sổ cái, phân bổ, đóng sổ, cảnh báo. Màn 25 (P&L theo tháng/team/shop/pháp nhân) gộp vào màn 7.
+  { no: 29, href: "/bang-dieu-khien", label: "Bảng điều khiển", roles: ALL, phase: 4, week: 4, built: true },
+  { no: 24, href: "/so-cai", label: "Sổ cái", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 4, week: 1, built: true },
+  { no: 26, href: "/phan-bo", label: "Phân bổ chi phí chung", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 4, week: 2, built: true },
+  { no: 27, href: "/dong-so", label: "Đóng sổ", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 4, week: 3, built: true },
+  { no: 28, href: "/canh-bao", label: "Trung tâm cảnh báo", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 4, week: 4, built: true },
 ];
 
 /** Các route không cần đăng nhập. */
@@ -57,8 +63,11 @@ export function canAccess(role: Role, pathname: string): boolean {
   return s ? s.roles.includes(role) : role === "ADMIN";
 }
 
-/** Trang đầu sau đăng nhập: màn đã làm xong đầu tiên mà vai trò được vào. */
+/** Trang đầu sau đăng nhập: bảng điều khiển theo vai trò (màn 29, GĐ4) — mọi vai trò đều vào được. */
+export const HOME = "/bang-dieu-khien";
+
 export function homeFor(role: Role): string {
   const allowed = SCREENS.filter((s) => s.roles.includes(role));
+  if (allowed.some((s) => s.href === HOME)) return HOME;
   return (allowed.find((s) => s.built) ?? allowed[0])?.href ?? "/";
 }

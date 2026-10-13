@@ -6,7 +6,9 @@ import { divRound, formatMoney, rateToScaled } from "@/lib/money";
 import { compactVnd, rateOn } from "@/lib/overview";
 import { buildPnl, type PnlMonth } from "@/lib/pnl";
 import { loadLedgerRows } from "@/lib/pnl-data";
+import type { Dim } from "@/lib/pnl-dims";
 import { Flash, PageHead } from "../ui";
+import { BudgetSection, DimensionSection } from "./sections";
 import { importLegacy } from "./actions";
 
 const LINES: { key: keyof PnlMonth; label: string; strong?: boolean; type?: AccountType }[] = [
@@ -20,12 +22,15 @@ const LINES: { key: keyof PnlMonth; label: string; strong?: boolean; type?: Acco
 
 const mLabel = (m: string) => `T${Number(m.slice(5))}/${m.slice(2, 4)}`;
 
-export default async function PnlPage({ searchParams }: { searchParams: Promise<{ nam?: string; ok?: string; error?: string }> }) {
+export default async function PnlPage({ searchParams }: { searchParams: Promise<{ nam?: string; thang?: string; chieu?: string; ok?: string; error?: string }> }) {
   const me = await requireUser(["ADMIN", "QUAN_LY", "KE_TOAN"]);
   const sp = await searchParams;
   const year = Number(sp.nam) || todayVn().getUTCFullYear();
   const from = dayOfMonth(year, 0, 1);
   const to = dayOfMonth(year, 11, 31);
+  // GĐ4: P&L một tháng theo chiều (mặc định tháng hiện tại, theo shop) + ngân sách tháng
+  const thang = /^\d{4}-\d{2}$/.test(sp.thang ?? "") ? sp.thang! : todayVn().toISOString().slice(0, 7);
+  const chieu: Dim = sp.chieu === "entity" || sp.chieu === "team" ? sp.chieu : "shop";
 
   const [raw, legacy, rates] = await Promise.all([
     loadLedgerRows(prisma, from, to),
@@ -67,11 +72,12 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
             <input className="input w-24" id="nam" name="nam" type="number" defaultValue={year} min={2020} max={2100} />
           </div>
           <button className="btn" type="submit">Xem</button>
+          <a className="btn" href={`/pnl/xuat?nam=${year}`}>Xuất Excel</a>
         </form>
       </PageHead>
       <Flash ok={sp.ok} error={sp.error} />
       <p className="mt-3 max-w-3xl text-sm text-ink-2">
-        Tính thẳng từ sổ cái theo ngày bút toán: doanh thu khi tiền shop về, chi phí khi đề nghị chi được duyệt hoặc hoá đơn NCC
+        Màn 7 + màn 25 (GĐ4). Tính thẳng từ sổ cái theo ngày bút toán (bỏ bút toán kết chuyển khi đóng sổ): doanh thu khi tiền shop về, chi phí khi đề nghị chi được duyệt hoặc hoá đơn NCC
         được ghi nhận, lương khi kỳ lương được duyệt. Không có ô nào để gõ tay.
       </p>
 
@@ -113,6 +119,9 @@ export default async function PnlPage({ searchParams }: { searchParams: Promise<
         )}
       </div>
       {months.length > 0 && <p className="mt-1 text-xs text-muted">Lợi nhuận cả năm chính xác: {formatMoney(pnl.total.net)}.</p>}
+
+      <DimensionSection thang={thang} chieu={chieu} year={year} />
+      <BudgetSection thang={thang} canEdit={me.role === "ADMIN" || me.role === "KE_TOAN"} />
 
       <section className="mt-6">
         <h2 className="font-bold">Đối chiếu với P&L Excel cũ</h2>
