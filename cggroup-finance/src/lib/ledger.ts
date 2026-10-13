@@ -205,6 +205,9 @@ export async function voidCashTxn(tx: Tx, p: { id: string; actorId: string; reas
     where: { id: p.id },
     data: { voidedAt: new Date(), voidedBy: p.actorId },
   });
+  // Gỡ khỏi hoá đơn NCC / đề nghị chi / kỳ lương đã dùng giao dịch này.
+  const { afterCashTxnVoided } = await import("./voids");
+  await afterCashTxnVoided(tx, p.id);
   const beforeRow: Partial<typeof before> = { ...before };
   delete beforeRow.journal;
   await audit(tx, { actorId: p.actorId, tableName: "CashTxn", recordId: p.id, action: "VOID", before: beforeRow, after });
