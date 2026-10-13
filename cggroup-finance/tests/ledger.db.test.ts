@@ -72,6 +72,39 @@ describe("postCashTxn", () => {
   });
 });
 
+describe("thu từ shop", () => {
+  it("doanh thu ghi theo kênh của shop: Amazon → 402, Walmart → 405", async () => {
+    const amz = await prisma.shop.create({ data: { code: "AMZ-AU1", name: "Amazon AU1", channel: "AMAZON" } });
+    const wm = await prisma.shop.create({ data: { code: "WM-01", name: "Walmart 01", channel: "WALMART" } });
+    const post = (shopId: string) =>
+      prisma.$transaction((tx) =>
+        postCashTxn(tx, {
+          date: parseBizDate("2026-11-05"), accountId: usdAccountId, direction: "IN", shopIncome: true, shopId,
+          amount: 100_000n, description: "Payout", actorId: "test",
+        }),
+      );
+    for (const [shop, gl] of [[amz.id, "402"], [wm.id, "405"]] as const) {
+      const txn = await post(shop);
+      const lines = await linesOf(txn.journalId!);
+      expect(lines.map((l) => [l.accountCode, l.shopId])).toEqual([
+        ["103", shop],
+        [gl, shop],
+      ]);
+    }
+  });
+
+  it("thiếu shop / shop đã đóng / kênh lạ → lỗi", async () => {
+    const base = {
+      date: parseBizDate("2026-11-05"), accountId: usdAccountId, direction: "IN" as const, shopIncome: true,
+      amount: 1n, description: "x", actorId: "test",
+    };
+    await expect(prisma.$transaction((tx) => postCashTxn(tx, base))).rejects.toThrow(/phải chọn shop/);
+    const closed = await prisma.shop.create({ data: { code: "ET-OLD", name: "Etsy cũ", channel: "ETSY", status: "CLOSED" } });
+    await expect(prisma.$transaction((tx) => postCashTxn(tx, { ...base, shopId: closed.id }))).rejects.toThrow(/đã đóng/);
+    await expect(prisma.shop.create({ data: { code: "EBAY", name: "eBay", channel: "EBAY" } })).rejects.toThrow(/shop_channel/);
+  });
+});
+
 describe("số dư đầu kỳ", () => {
   it("Nợ TK tiền / Có 301, nguồn OPENING; không cho gắn hạng mục hay ghi chi", async () => {
     const txn = await prisma.$transaction((tx) =>

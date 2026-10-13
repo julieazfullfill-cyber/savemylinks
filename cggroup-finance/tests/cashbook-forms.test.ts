@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCashTxnForm, parseFxRateForm } from "@/lib/cashbook-forms";
+import { parseCashTxnForm, parseFxRateForm, txnKind } from "@/lib/cashbook-forms";
 
 const fd = (o: Record<string, string>) => {
   const f = new FormData();
@@ -19,6 +19,20 @@ describe("parseCashTxnForm", () => {
   it("số dư đầu kỳ: thu vào, bỏ hạng mục và NCC", () => {
     const v = parseCashTxnForm(fd({ ...base, kind: "OPENING", supplierId: "s1" }), "VND");
     expect(v).toMatchObject({ opening: true, direction: "IN", categoryId: null, supplierId: null });
+  });
+  it("thu từ shop: bắt buộc shop, bỏ hạng mục/NCC", () => {
+    const v = parseCashTxnForm(fd({ ...base, kind: "SHOP_IN", shopId: "sh1", supplierId: "s1" }), "USD");
+    expect(v).toMatchObject({ shopIncome: true, direction: "IN", shopId: "sh1", categoryId: null, supplierId: null });
+    expect(() => parseCashTxnForm(fd({ ...base, kind: "SHOP_IN" }), "USD")).toThrow(/chọn kênh và shop/);
+  });
+  it("thu khác không gắn shop", () => {
+    expect(parseCashTxnForm(fd({ ...base, kind: "IN", shopId: "sh1" }), "VND")).toMatchObject({ shopIncome: false, shopId: null });
+  });
+  it("txnKind suy loại từ giao dịch đã ghi", () => {
+    expect(txnKind({ direction: "IN", shopId: "s", categoryId: null })).toBe("SHOP_IN");
+    expect(txnKind({ direction: "IN", shopId: null, categoryId: null })).toBe("IN");
+    expect(txnKind({ direction: "IN", shopId: null, categoryId: null, journalSource: "OPENING" })).toBe("OPENING");
+    expect(txnKind({ direction: "OUT", shopId: "s", categoryId: "c" })).toBe("OUT");
   });
   it("thiếu diễn giải / số tiền 0", () => {
     expect(() => parseCashTxnForm(fd({ ...base, description: "" }), "VND")).toThrow(/diễn giải/);

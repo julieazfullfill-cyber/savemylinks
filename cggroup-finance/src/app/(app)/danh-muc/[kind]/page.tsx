@@ -42,6 +42,8 @@ function display(f: Field, v: unknown, refs: RefOptions): React.ReactNode {
       return fmtBizDate(v as Date);
     case "ref":
       return refs[f.ref!].find((o) => o.value === v)?.label ?? String(v);
+    case "select":
+      return f.optionLabels?.[String(v)] ?? String(v);
     default:
       return String(v);
   }
@@ -68,7 +70,7 @@ function Input({ f, row, refs }: { f: Field; row: Row | null; refs: RefOptions }
   }
   let control: React.ReactNode;
   if (f.type === "select" || f.type === "ref") {
-    const opts = f.type === "select" ? f.options!.map((o) => ({ value: o, label: o })) : refs[f.ref!];
+    const opts = f.type === "select" ? f.options!.map((o) => ({ value: o, label: f.optionLabels?.[o] ?? o })) : refs[f.ref!];
     control = (
       <select className="input" {...common} defaultValue={formValue(f, row)}>
         {!f.required && <option value="">—</option>}

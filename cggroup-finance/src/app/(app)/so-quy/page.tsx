@@ -1,13 +1,16 @@
 import type { Prisma } from "@prisma/client";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { KIND_LABEL } from "@/lib/cashbook-forms";
+import { KIND_LABEL, txnKind } from "@/lib/cashbook-forms";
+import { channelLabel, CHANNELS } from "@/lib/channels";
 import { addDays, bizDateStr, fmtBizDate, fmtTimestamp, parseBizDate, todayVn } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { formatMoney, type Currency } from "@/lib/money";
 import { Badge, Field, Flash, PageHead } from "../ui";
 import { createCashTxn, saveFxRate, voidCashTxnAction } from "./actions";
+import { EntryForm } from "./entry-form";
 
-type SP = { acc?: string; from?: string; to?: string; cat?: string; voided?: string; ok?: string; error?: string };
+type SP = { acc?: string; from?: string; to?: string; cat?: string; ch?: string; shop?: string; voided?: string; ok?: string; error?: string };
 
 const safeDate = (s: string | undefined, fallback: Date) => {
   try {
@@ -16,6 +19,8 @@ const safeDate = (s: string | undefined, fallback: Date) => {
     return fallback;
   }
 };
+
+const KIND_TONE = { OUT: "crit", SHOP_IN: "good", IN: "good", OPENING: "accent" } as const;
 
 export default async function CashbookPage({ searchParams }: { searchParams: Promise<SP> }) {
   await requireUser(["ADMIN", "KE_TOAN"]);
@@ -26,21 +31,25 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
 
   // Giữ bộ lọc khi submit form (server action redirect về đúng trang đang xem).
   const keep = new URLSearchParams();
-  for (const k of ["acc", "from", "to", "cat", "voided"] as const) if (sp[k]) keep.set(k, sp[k]!);
+  for (const k of ["acc", "from", "to", "cat", "ch", "shop", "voided"] as const) if (sp[k]) keep.set(k, sp[k]!);
   const qs = keep.toString();
+
+  const shops = await prisma.shop.findMany({ orderBy: [{ channel: "asc" }, { code: "asc" }] });
+  const shopById = new Map(shops.map((s) => [s.id, s]));
+  const channelShopIds = sp.ch ? shops.filter((s) => s.channel === sp.ch).map((s) => s.id) : null;
 
   const where: Prisma.CashTxnWhereInput = {
     date: { gte: from, lte: to },
     ...(sp.acc ? { accountId: sp.acc } : {}),
     ...(sp.cat ? { categoryId: sp.cat } : {}),
+    ...(sp.shop ? { shopId: sp.shop } : channelShopIds ? { shopId: { in: channelShopIds } } : {}),
     ...(sp.voided ? {} : { voidedAt: null }),
   };
 
-  const [accounts, categories, suppliers, shops, txns, sums, lastFx, users] = await Promise.all([
+  const [accounts, categories, suppliers, txns, sums, lastFx, users] = await Promise.all([
     prisma.cashAccount.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     prisma.expenseCategory.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.shop.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
     prisma.cashTxn.findMany({
       where,
       include: { account: true, category: true, journal: { select: { source: true } } },
@@ -57,10 +66,29 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
   const balance = (id: string) =>
     sums.filter((s) => s.accountId === id).reduce((a, s) => a + (s.direction === "IN" ? 1n : -1n) * (s._sum.amount ?? 0n), 0n);
 
-  const totalIn = txns.filter((t) => !t.voidedAt && t.direction === "IN").reduce((a, t) => a + t.amountVnd, 0n);
-  const totalOut = txns.filter((t) => !t.voidedAt && t.direction === "OUT").reduce((a, t) => a + t.amountVnd, 0n);
+  const rows = txns.map((t) => ({ ...t, kind: txnKind({ ...t, journalSource: t.journal?.source }) }));
+  const live = rows.filter((t) => !t.voidedAt);
+  const totalIn = live.filter((t) => t.direction === "IN" && t.kind !== "OPENING").reduce((a, t) => a + t.amountVnd, 0n);
+  const totalOut = live.filter((t) => t.direction === "OUT").reduce((a, t) => a + t.amountVnd, 0n);
+
+  // Tổng thu từ shop theo kênh → shop, trong khoảng lọc.
+  const shopIncome = new Map<string, bigint>();
+  for (const t of live) if (t.kind === "SHOP_IN") shopIncome.set(t.shopId!, (shopIncome.get(t.shopId!) ?? 0n) + t.amountVnd);
+  const byChannel = CHANNELS.map((c) => {
+    const list = shops
+      .filter((s) => s.channel === c.code)
+      .map((s) => ({ shop: s, vnd: shopIncome.get(s.id) ?? 0n }))
+      .sort((a, b) => (b.vnd > a.vnd ? 1 : b.vnd < a.vnd ? -1 : 0));
+    return { ...c, list, vnd: list.reduce((a, x) => a + x.vnd, 0n) };
+  });
+  const shopIncomeTotal = byChannel.reduce((a, c) => a + c.vnd, 0n);
 
   const accountOpts = accounts.map((a) => ({ value: a.id, label: `${a.code} · ${a.name} (${a.currency})` }));
+  const channelOpts = CHANNELS.map((c) => ({ value: c.code, label: c.label }));
+  const filterLink = (extra: Record<string, string>) => {
+    const p = new URLSearchParams({ from: bizDateStr(from), to: bizDateStr(to), ...extra });
+    return `/so-quy?${p}`;
+  };
 
   return (
     <div className="max-w-7xl">
@@ -84,24 +112,18 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
       </p>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
-        {/* Nhập nhanh */}
-        <form action={createCashTxn.bind(null, qs)} className="card p-5">
-          <h2 className="font-bold">Nhập giao dịch</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Field name="kind" label="Loại" required empty={false} defaultValue="OUT" options={Object.entries(KIND_LABEL).map(([value, label]) => ({ value, label }))} />
-            <Field name="date" label="Ngày" type="date" required defaultValue={bizDateStr(today)} />
-            <Field name="accountId" label="Tài khoản tiền" required empty="Chọn…" defaultValue={sp.acc} options={accountOpts} />
-            <Field name="amount" label="Số tiền" required inputMode="decimal" placeholder="1.250.000 hoặc 125,50" help="Theo tiền của tài khoản (đồng / đô)" />
-            <Field name="categoryId" label="Hạng mục" options={categories.map((c) => ({ value: c.id, label: c.name }))} help="Để trống: thu khác (409) / chi khác (699)" />
-            <Field name="supplierId" label="Nhà cung cấp" options={suppliers.map((s) => ({ value: s.id, label: s.name }))} />
-            <Field name="shopId" label="Shop" options={shops.map((s) => ({ value: s.id, label: s.name }))} />
-            <Field name="fxRate" label="Tỷ giá (USD)" inputMode="decimal" placeholder={lastFx ? lastFx.rate.toString() : "25.400"} help="Trống = tỷ giá gần nhất trong bảng" />
-          </div>
-          <div className="mt-4"><Field name="description" label="Diễn giải" required placeholder="Nạp Merchize đơn tuần 45…" /></div>
-          <div className="mt-5"><button className="btn-primary" type="submit">Ghi sổ</button></div>
-        </form>
+        <EntryForm
+          action={createCashTxn.bind(null, qs)}
+          accounts={accountOpts}
+          categories={categories.map((c) => ({ value: c.id, label: c.name }))}
+          suppliers={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+          shops={shops.filter((s) => s.status !== "CLOSED").map((s) => ({ id: s.id, code: s.code, name: s.name, channel: s.channel }))}
+          channels={channelOpts}
+          today={bizDateStr(today)}
+          defaultAccount={sp.acc}
+          fxPlaceholder={lastFx ? lastFx.rate.toString() : "25.400"}
+        />
 
-        {/* Tỷ giá */}
         <form action={saveFxRate.bind(null, qs)} className="card p-5">
           <h2 className="font-bold">Tỷ giá USD/VND</h2>
           <p className="mt-1 text-sm text-ink-2">
@@ -120,12 +142,59 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
         </form>
       </div>
 
+      {/* Thu theo kênh → shop */}
+      <section className="card mt-5 p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-bold">Thu từ shop theo kênh</h2>
+          <span className="text-sm text-muted">
+            {fmtBizDate(from)} – {fmtBizDate(to)} · tổng <strong className="tabular-nums text-ink">{formatMoney(shopIncomeTotal)}</strong>
+          </span>
+        </div>
+        {shops.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-2">
+            Chưa có shop nào.{" "}
+            <Link className="text-accent hover:underline" href="/danh-muc/shop?edit=new">Tạo shop</Link> và chọn kênh (Amazon, Etsy, Walmart, TikTok, Website) để bắt đầu ghi tiền thu theo shop.
+          </p>
+        ) : (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {byChannel.map((c) => (
+              <div key={c.code} className={`rounded-md border p-3 ${sp.ch === c.code ? "border-accent" : "border-hair"}`}>
+                <a className="flex items-baseline justify-between hover:text-accent" href={filterLink({ ch: c.code })}>
+                  <span className="font-semibold">{c.label}</span>
+                  <span className="text-xs text-muted">TK {c.revenueAccount}</span>
+                </a>
+                <div className="font-bold tabular-nums">{formatMoney(c.vnd)}</div>
+                <ul className="mt-2 space-y-0.5 text-xs">
+                  {c.list.map(({ shop, vnd }) => (
+                    <li key={shop.id} className="flex justify-between gap-2">
+                      <a className={`truncate hover:text-accent ${shop.status !== "ACTIVE" ? "text-muted" : ""}`} href={filterLink({ shop: shop.id })}>
+                        {shop.code}
+                      </a>
+                      <span className="tabular-nums">{vnd ? formatMoney(vnd) : <span className="text-muted">—</span>}</span>
+                    </li>
+                  ))}
+                  {!c.list.length && <li className="text-muted">Chưa có shop</li>}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Lọc */}
-      <form method="get" className="card mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-6">
+      <form method="get" className="card mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field name="acc" label="Tài khoản" empty="Tất cả" defaultValue={sp.acc} options={accountOpts} />
         <Field name="from" label="Từ ngày" type="date" defaultValue={bizDateStr(from)} />
         <Field name="to" label="Đến ngày" type="date" defaultValue={bizDateStr(to)} />
         <Field name="cat" label="Hạng mục" empty="Tất cả" defaultValue={sp.cat} options={categories.map((c) => ({ value: c.id, label: c.name }))} />
+        <Field name="ch" label="Kênh" empty="Tất cả" defaultValue={sp.ch} options={channelOpts} />
+        <Field
+          name="shop"
+          label="Shop"
+          empty="Tất cả"
+          defaultValue={sp.shop}
+          options={shops.map((s) => ({ value: s.id, label: `${channelLabel(s.channel)} · ${s.code}` }))}
+        />
         <label className="flex items-end gap-2 pb-2 text-sm">
           <input type="checkbox" name="voided" value="1" defaultChecked={!!sp.voided} /> Hiện cả giao dịch đã huỷ
         </label>
@@ -136,10 +205,10 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
       </form>
 
       <div className="mt-3 flex flex-wrap gap-4 text-sm">
-        <span>{txns.length} giao dịch</span>
+        <span>{rows.length} giao dịch</span>
         <span>Thu: <strong className="tabular-nums text-good">{formatMoney(totalIn)}</strong></span>
         <span>Chi: <strong className="tabular-nums text-crit">{formatMoney(totalOut)}</strong></span>
-        <span className="text-muted">(quy VND theo tỷ giá ngày giao dịch)</span>
+        <span className="text-muted">(quy VND theo tỷ giá ngày giao dịch, không tính số dư đầu kỳ)</span>
       </div>
 
       <div className="card mt-2 overflow-x-auto">
@@ -147,23 +216,31 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
           <thead>
             <tr>
               <th>Ngày</th><th>Tài khoản</th><th>Loại</th><th className="text-right">Số tiền</th>
-              <th className="text-right">Quy VND</th><th>Hạng mục</th><th>Diễn giải</th><th>Người ghi</th><th />
+              <th className="text-right">Quy VND</th><th>Kênh · Shop</th><th>Hạng mục</th><th>Diễn giải</th><th>Người ghi</th><th />
             </tr>
           </thead>
           <tbody>
-            {txns.map((t) => {
-              const kind = t.journal?.source === "OPENING" ? "OPENING" : t.direction;
+            {rows.map((t) => {
+              const shop = t.shopId ? shopById.get(t.shopId) : undefined;
               return (
                 <tr key={t.id} className={t.voidedAt ? "opacity-50" : ""}>
                   <td className="whitespace-nowrap tabular-nums">{fmtBizDate(t.date)}</td>
                   <td className="whitespace-nowrap">{t.account.code}</td>
-                  <td>
-                    <Badge tone={kind === "OUT" ? "crit" : kind === "OPENING" ? "accent" : "good"}>{KIND_LABEL[kind]}</Badge>
-                  </td>
+                  <td><Badge tone={KIND_TONE[t.kind]}>{KIND_LABEL[t.kind]}</Badge></td>
                   <td className="whitespace-nowrap text-right tabular-nums">{formatMoney(t.amount, t.currency as Currency)}</td>
                   <td className="whitespace-nowrap text-right tabular-nums">
                     {formatMoney(t.amountVnd)}
                     {t.currency !== "VND" && <div className="text-xs text-muted">@{Number(t.fxRate).toLocaleString("vi-VN")}</div>}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    {shop ? (
+                      <>
+                        <span className="text-xs text-muted">{channelLabel(shop.channel)} · </span>
+                        {shop.code}
+                      </>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </td>
                   <td>{t.category?.name ?? <span className="text-muted">—</span>}</td>
                   <td className="min-w-[200px]">
@@ -190,8 +267,8 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
                 </tr>
               );
             })}
-            {!txns.length && (
-              <tr><td colSpan={9} className="py-8 text-center text-muted">Chưa có giao dịch trong khoảng ngày này.</td></tr>
+            {!rows.length && (
+              <tr><td colSpan={10} className="py-8 text-center text-muted">Chưa có giao dịch trong khoảng ngày này.</td></tr>
             )}
           </tbody>
         </table>

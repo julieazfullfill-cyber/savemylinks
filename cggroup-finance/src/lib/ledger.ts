@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { audit } from "./audit";
 import type { Tx } from "./db";
+import { revenueAccountFor } from "./channels";
 import { toVnd, type Currency } from "./money";
 
 // Mỗi giao dịch tiền sinh đúng một JournalEntry có tổng nợ = tổng có (đặc tả mục 01).
@@ -78,6 +79,8 @@ export type CashTxnInput = {
   actorId: string;
   /** Số dư đầu kỳ: thu vào, đối ứng 301 Vốn chủ sở hữu, bút toán nguồn OPENING. */
   opening?: boolean;
+  /** Thu từ shop: bắt buộc shopId, đối ứng là tài khoản doanh thu của kênh shop (channels.ts). */
+  shopIncome?: boolean;
 };
 
 /** Tài khoản đối ứng của bút toán số dư đầu kỳ. */
@@ -98,7 +101,16 @@ export async function postCashTxn(tx: Tx, input: CashTxnInput) {
     throw new Error("Số dư đầu kỳ là khoản thu, không gắn hạng mục");
   }
   let counterGl: string = input.opening ? OPENING_COUNTER : DEFAULT_COUNTER[input.direction];
-  if (input.categoryId) {
+  if (input.shopIncome) {
+    // Thu từ shop: Có doanh thu của kênh mà shop thuộc về (Etsy 401, Amazon 402…).
+    if (input.direction !== "IN" || input.opening || input.categoryId) {
+      throw new Error("Thu từ shop là khoản thu, không gắn hạng mục chi phí");
+    }
+    if (!input.shopId) throw new Error("Thu từ shop phải chọn shop");
+    const shop = await tx.shop.findUniqueOrThrow({ where: { id: input.shopId } });
+    if (shop.status === "CLOSED") throw new Error(`Shop ${shop.code} đã đóng`);
+    counterGl = revenueAccountFor(shop.channel);
+  } else if (input.categoryId) {
     const cat = await tx.expenseCategory.findUniqueOrThrow({ where: { id: input.categoryId } });
     counterGl = cat.accountCode;
   }

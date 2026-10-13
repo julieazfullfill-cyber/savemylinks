@@ -75,6 +75,9 @@ tests/                                  money, forecast, catalog, ledger.db
 - Bảng tài khoản trong đặc tả liệt kê **41** tài khoản (tiêu đề ghi 35) — seed đủ 41, rà lại hạn 18/10.
 - Pháp nhân và shop chưa có trong đặc tả → chưa seed; nhập ở màn hình 8 (việc GĐ0 hạn 22/10).
 - Giao dịch không gắn hạng mục: đối ứng mặc định 409 (thu) / 699 (chi).
+- **Tiền thu chia theo 5 kênh** (`src/lib/channels.ts`): Amazon 402, Etsy 401, Walmart 405 (thêm mới), TikTok 403,
+  Website 404. Mỗi shop thuộc một kênh (CHECK `shop_channel` ở DB). Sổ quỹ có 4 loại: Chi, **Thu từ shop**
+  (bắt buộc chọn kênh → shop, Có doanh thu của kênh), Thu khác (409 — hoàn tiền NCC, góp vốn…), Số dư đầu kỳ (Có 301).
 - Dự báo: giá vốn tính từ doanh số đều theo tuần (không theo payout bị dồn); khoản thu nhập tay nhân
   `confidence`, khoản chi luôn tính đủ 100%; hoá đơn quá hạn dồn vào tuần 1.
 - Phân quyền màn hình (Giám đốc = vai trò `QUAN_LY`) nằm ở `src/lib/permissions.ts`.

@@ -25,6 +25,7 @@ export const accounts: [string, string, AccountType][] = [
   ["402", "Doanh thu Amazon", "REVENUE"],
   ["403", "Doanh thu TikTok Shop", "REVENUE"],
   ["404", "Doanh thu website", "REVENUE"],
+  ["405", "Doanh thu Walmart", "REVENUE"],
   ["409", "Thu nhập khác", "REVENUE"],
   ["501", "Chi phí fulfillment", "COGS"],
   ["502", "Vận chuyển", "COGS"],

@@ -1,6 +1,7 @@
 // Cấu hình màn hình 8 — Danh mục & người dùng. Mỗi danh mục khai báo trường một lần;
 // trang, form và server action đều đọc từ đây. Không có nút xoá: ngưng dùng bằng `active`.
 import { parseBizDate } from "./dates";
+import { CHANNEL_CODES, CHANNELS } from "./channels";
 import { toMinor } from "./money";
 
 export type RefSource = "account" | "assetAccount" | "entity" | "user";
@@ -13,6 +14,8 @@ export type Field = {
   /** Không sửa được sau khi tạo (mã tài khoản, loại tiền…). */
   immutable?: boolean;
   options?: readonly string[];
+  /** Nhãn hiển thị cho từng option (mặc định là chính mã). */
+  optionLabels?: Record<string, string>;
   ref?: RefSource;
   min?: number;
   max?: number;
@@ -105,7 +108,15 @@ export const CATALOGS: Catalog[] = [
     fields: [
       code,
       name,
-      { name: "channel", label: "Kênh", type: "select", required: true, options: ["ETSY", "AMAZON", "TIKTOK", "WEBSITE"] },
+      {
+        name: "channel",
+        label: "Kênh",
+        type: "select",
+        required: true,
+        options: CHANNEL_CODES,
+        optionLabels: Object.fromEntries(CHANNELS.map((c) => [c.code, c.label])),
+        help: "Tiền thu từ shop ghi vào doanh thu của kênh này",
+      },
       { name: "entityId", label: "Pháp nhân", type: "ref", ref: "entity" },
       { name: "ownerId", label: "Phụ trách", type: "ref", ref: "user" },
       { name: "status", label: "Trạng thái", type: "select", required: true, options: ["ACTIVE", "PAUSED", "CLOSED"], default: "ACTIVE" },
