@@ -7,7 +7,7 @@ import { addDays, bizDateStr, fmtBizDate, fmtTimestamp, parseBizDate, todayVn } 
 import { prisma } from "@/lib/db";
 import { formatMoney, type Currency } from "@/lib/money";
 import { Badge, Field, Flash, PageHead } from "../ui";
-import { createCashTxn, saveFxRate, voidCashTxnAction } from "./actions";
+import { createCashTxn, saveFxRate, uploadAttachmentAction, voidCashTxnAction } from "./actions";
 import { EntryForm } from "./entry-form";
 
 type SP = { prov?: string; acc?: string; from?: string; to?: string; cat?: string; ch?: string; shop?: string; voided?: string; ok?: string; error?: string };
@@ -67,6 +67,9 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
   ]);
   const supplierName = new Map(suppliers.map((s) => [s.id, s.name]));
   const userName = new Map(users.map((u) => [u.id, u.name]));
+  const attachments = await prisma.attachment.findMany({ where: { tableName: "CashTxn", recordId: { in: txns.map((t) => t.id) } }, orderBy: { uploadedAt: "asc" } });
+  const attBy = new Map<string, typeof attachments>();
+  for (const a of attachments) attBy.set(a.recordId, [...(attBy.get(a.recordId) ?? []), a]);
   const balance = (id: string) =>
     sums.filter((s) => s.accountId === id).reduce((a, s) => a + (s.direction === "IN" ? 1n : -1n) * (s._sum.amount ?? 0n), 0n);
 
@@ -294,6 +297,20 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
                   <td className="min-w-[200px]">
                     {t.description}
                     {t.supplierId && <div className="text-xs text-muted">NCC: {supplierName.get(t.supplierId) ?? t.supplierId}</div>}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+                      {(attBy.get(t.id) ?? []).map((a) => (
+                        <a key={a.id} className="text-accent hover:underline" href={`/so-quy/chung-tu/${a.id}`} target="_blank" rel="noopener">📎 {a.filename}</a>
+                      ))}
+                      {!t.voidedAt && (
+                        <details className="inline-block">
+                          <summary className="cursor-pointer text-muted hover:text-accent">+ chứng từ</summary>
+                          <form action={uploadAttachmentAction.bind(null, qs, t.id)} className="mt-1 flex items-center gap-1">
+                            <input className="text-xs" name="file" type="file" required accept="application/pdf,image/png,image/jpeg,image/webp" aria-label="Chọn chứng từ" />
+                            <button className="btn" type="submit">Tải lên</button>
+                          </form>
+                        </details>
+                      )}
+                    </div>
                     {t.voidedAt && (
                       <div className="text-xs text-crit">
                         Đã huỷ {fmtTimestamp(t.voidedAt)} bởi {userName.get(t.voidedBy ?? "") ?? t.voidedBy}

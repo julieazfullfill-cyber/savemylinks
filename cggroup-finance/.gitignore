@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# chứng từ đính kèm (lưu cục bộ) và bản sao lưu DB
+/uploads
+/backups

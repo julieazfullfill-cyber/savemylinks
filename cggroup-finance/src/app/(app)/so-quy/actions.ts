@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { checkFile, saveAttachment } from "@/lib/attachments";
 import { audit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { parseCashTxnForm, parseFxRateForm, readCashTxnHead } from "@/lib/cashbook-forms";
@@ -18,12 +19,30 @@ export async function createCashTxn(qs: string, form: FormData) {
     const { accountId } = readCashTxnHead(form);
     const account = await prisma.cashAccount.findUniqueOrThrow({ where: { id: accountId } });
     const data = parseCashTxnForm(form, account.currency as Currency);
-    await prisma.$transaction((tx) => postCashTxn(tx, { ...data, actorId: me.uid }));
+    const file = checkFile(form.get("file"));
+    await prisma.$transaction(async (tx) => {
+      const txn = await postCashTxn(tx, { ...data, actorId: me.uid });
+      if (file) await saveAttachment(tx, { file, tableName: "CashTxn", recordId: txn.id, actorId: me.uid });
+    });
   } catch (e) {
     return back(qs, `error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath("/so-quy");
   back(qs, `ok=${encodeURIComponent("Đã ghi giao dịch và bút toán")}`);
+}
+
+export async function uploadAttachmentAction(qs: string, txnId: string, form: FormData) {
+  const me = await requireUser([...ROLES]);
+  try {
+    const file = checkFile(form.get("file"));
+    if (!file) throw new Error("Chọn file chứng từ");
+    await prisma.cashTxn.findUniqueOrThrow({ where: { id: txnId } });
+    await prisma.$transaction((tx) => saveAttachment(tx, { file, tableName: "CashTxn", recordId: txnId, actorId: me.uid }));
+  } catch (e) {
+    return back(qs, `error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath("/so-quy");
+  back(qs, `ok=${encodeURIComponent("Đã đính kèm chứng từ")}`);
 }
 
 export async function voidCashTxnAction(qs: string, id: string, form: FormData) {

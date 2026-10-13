@@ -168,6 +168,11 @@ export function EntryForm({
           placeholder={kind === "SHOP_IN" ? "Payout Amazon kỳ 01–14/11…" : kind === "OPENING" ? "Số dư đầu kỳ 31/10" : "Nạp Merchize đơn tuần 45…"}
         />
       </div>
+      <div className="mt-4">
+        <label className="label" htmlFor="file">Chứng từ (tuỳ chọn)</label>
+        <input className="text-sm" id="file" name="file" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" />
+        <p className="mt-1 text-xs text-muted">PDF hoặc ảnh, tối đa 10MB. Thêm sau được ở từng dòng giao dịch.</p>
+      </div>
       <div className="mt-5">
         <button className="btn-primary" type="submit">Ghi sổ</button>
       </div>
