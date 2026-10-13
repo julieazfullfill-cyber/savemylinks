@@ -3,6 +3,8 @@ import { parseBizDate as d } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { approveExpense, createExpense, monthlySpendByCategory, payExpense, rejectExpense } from "@/lib/expenses";
 import { voidCashTxn } from "@/lib/ledger";
+import { buildPnl } from "@/lib/pnl";
+import { loadLedgerRows } from "@/lib/pnl-data";
 import { seedCatalog } from "../prisma/seed-data";
 
 let bank = "";
@@ -48,6 +50,13 @@ describe("đề nghị chi", () => {
     await expect(prisma.$transaction((tx) => rejectExpense(tx, { id: e.id, actorId: "gd", reason: " " }))).rejects.toThrow(/lý do/);
     const r = await prisma.$transaction((tx) => rejectExpense(tx, { id: e.id, actorId: "gd", reason: "Không cần" }));
     expect(r.status).toBe("REJECTED");
+  });
+
+  it("P&L từ sổ cái: chi phí 605 tháng 11 = đề nghị đã duyệt", async () => {
+    const rows = await loadLedgerRows(prisma, d("2026-01-01"), d("2026-12-31"));
+    const p = buildPnl(rows);
+    expect(p.accounts.find((a) => a.code === "605")?.months.get("2026-11")).toBe(3_000_000n);
+    expect(p.byMonth.get("2026-11")?.expense).toBe(3_000_000n);
   });
 
   it("chi tiêu tháng theo hạng mục gồm đề nghị đã duyệt", async () => {
