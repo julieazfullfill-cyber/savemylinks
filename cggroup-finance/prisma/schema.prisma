@@ -249,39 +249,76 @@ model CashTxn {
 
 /// Khoản chi có quy trình duyệt. Duyệt xong + chi tiền → sinh CashTxn.
 model Expense {
-  id          String          @id @default(cuid())
-  date        DateTime        @db.Date
-  categoryId  String
-  category    ExpenseCategory @relation(fields: [categoryId], references: [id])
-  supplierId  String?
-  amount      BigInt
-  currency    Currency
-  amountVnd   BigInt
-  description String
-  status      ExpenseStatus   @default(DRAFT)
-  requestedBy String
-  approvedBy  String?
-  approvedAt  DateTime?
-  cashTxnId   String?         @unique
+  id             String          @id @default(cuid())
+  date           DateTime        @db.Date
+  categoryId     String
+  category       ExpenseCategory @relation(fields: [categoryId], references: [id])
+  supplierId     String?
+  amount         BigInt
+  currency       Currency
+  amountVnd      BigInt
+  description    String
+  status         ExpenseStatus   @default(DRAFT)
+  requestedBy    String
+  approvedBy     String?
+  approvedAt     DateTime?
+  cashTxnId      String?         @unique
+  /// Bổ sung: bút toán ghi nhận chi phí khi duyệt (Nợ TK hạng mục / Có 201).
+  journalId      String?         @unique
+  rejectedReason String?
+  createdAt      DateTime        @default(now())
 
   @@index([status, date])
 }
 
 /// Hoá đơn nhà cung cấp — công nợ phải trả, đẩy vào dự báo.
 model SupplierBill {
-  id         String   @id @default(cuid())
-  supplierId String
-  supplier   Supplier @relation(fields: [supplierId], references: [id])
-  billNo     String?
-  issueDate  DateTime @db.Date
-  dueDate    DateTime @db.Date
-  amount     BigInt
-  currency   Currency
-  amountVnd  BigInt
-  paidVnd    BigInt   @default(0)
-  status     String   @default("OPEN") // OPEN | PARTIAL | PAID
+  id          String   @id @default(cuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  billNo      String?
+  issueDate   DateTime @db.Date
+  dueDate     DateTime @db.Date
+  amount      BigInt
+  currency    Currency
+  amountVnd   BigInt
+  paidVnd     BigInt   @default(0)
+  status      String   @default("OPEN") // OPEN | PARTIAL | PAID
+  /// Bổ sung: TK chi phí ghi Nợ khi nhận hoá đơn (mặc định 501 fulfillment), Có 201.
+  accountCode String   @default("501")
+  description String?
+  /// Bổ sung: bút toán ghi nhận công nợ khi nhận hoá đơn.
+  journalId   String?  @unique
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  payments BillPayment[]
 
   @@index([dueDate, status])
+}
+
+/// Bổ sung: mỗi lần trả tiền cho một hoá đơn — nối hoá đơn với giao dịch tiền (Nợ 201 / Có TK tiền).
+model BillPayment {
+  id        String       @id @default(cuid())
+  billId    String
+  bill      SupplierBill @relation(fields: [billId], references: [id])
+  cashTxnId String       @unique
+  amountVnd BigInt
+  createdAt DateTime     @default(now())
+
+  @@index([billId])
+}
+
+/// Bổ sung (đặc tả mục 06, điểm 3): lưu dự báo mỗi tuần để đo độ lệch sau này.
+model ForecastSnapshot {
+  id        String   @id @default(cuid())
+  weekStart DateTime @db.Date
+  scenario  Json
+  rows      Json
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([weekStart])
 }
 
 /// Bút toán. Ràng buộc tổng nợ = tổng có kiểm ở tầng ứng dụng + trigger SQL.
@@ -522,10 +559,29 @@ model PayrollPeriod {
   approvedAt       DateTime?
   journalId        String?       @unique
   closedAt         DateTime?
+  /// Bổ sung: phê duyệt vượt cấp chi thưởng bị giữ trong tháng lỗ (người duyệt, lúc nào).
+  bonusOverrideBy  String?
+  bonusOverrideAt  DateTime?
+  paidAt           DateTime?
+
+  adjustments PayrollAdjustment[]
 
   lines PayrollLine[]
 
   @@unique([year, month])
+}
+
+/// Bổ sung: lương hiệu quả và khấu trừ nhập tay cho từng người trước khi tính kỳ (màn 13).
+model PayrollAdjustment {
+  id         String        @id @default(cuid())
+  periodId   String
+  period     PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employeeId String
+  perfPayVnd BigInt        @default(0)
+  penaltyVnd BigInt        @default(0)
+  note       String?
+
+  @@unique([periodId, employeeId])
 }
 
 /// Một dòng = một người một kỳ. TỔNG KỲ LƯƠNG LUÔN LÀ SUM(payrollLine),

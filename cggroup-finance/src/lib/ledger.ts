@@ -81,6 +81,13 @@ export type CashTxnInput = {
   opening?: boolean;
   /** Thu từ shop: bắt buộc shopId, đối ứng là tài khoản doanh thu của kênh shop (channels.ts). */
   shopIncome?: boolean;
+  /**
+   * Chỉ dùng nội bộ (không nhận từ form): tài khoản đối ứng cố định cho nghiệp vụ tất toán
+   * công nợ — trả NCC Nợ 201, chi lương Nợ 202. Không đi cùng hạng mục, shop thu hay số dư đầu kỳ.
+   */
+  counterGl?: string;
+  /** Nguồn bút toán khi ghi từ nghiệp vụ khác: BILL_PAYMENT, EXPENSE, PAYROLL_PAYMENT… */
+  journalSource?: string;
 };
 
 /** Tài khoản đối ứng của bút toán số dư đầu kỳ. */
@@ -101,7 +108,12 @@ export async function postCashTxn(tx: Tx, input: CashTxnInput) {
     throw new Error("Số dư đầu kỳ là khoản thu, không gắn hạng mục");
   }
   let counterGl: string = input.opening ? OPENING_COUNTER : DEFAULT_COUNTER[input.direction];
-  if (input.shopIncome) {
+  if (input.counterGl) {
+    if (input.opening || input.shopIncome || input.categoryId) {
+      throw new Error("counterGl không dùng cùng số dư đầu kỳ / thu từ shop / hạng mục");
+    }
+    counterGl = input.counterGl;
+  } else if (input.shopIncome) {
     // Thu từ shop: Có doanh thu của kênh mà shop thuộc về (Etsy 401, Amazon 402…).
     if (input.direction !== "IN" || input.opening || input.categoryId) {
       throw new Error("Thu từ shop là khoản thu, không gắn hạng mục chi phí");
@@ -129,7 +141,7 @@ export async function postCashTxn(tx: Tx, input: CashTxnInput) {
     data: {
       date: input.date,
       memo: input.description,
-      source: input.opening ? "OPENING" : "CASH_TXN",
+      source: input.opening ? "OPENING" : (input.journalSource ?? "CASH_TXN"),
       createdBy: input.actorId,
       lines: { create: lines },
     },
