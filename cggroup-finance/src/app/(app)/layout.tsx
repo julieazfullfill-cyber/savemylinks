@@ -15,13 +15,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="text-base font-bold">Tài chính</div>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:block">
-          {([1, 2] as const).map((phase) => {
+          {([1, 2, 3] as const).map((phase) => {
             const group = screens.filter((s) => s.phase === phase);
             if (!group.length) return null;
             return (
               <div key={phase} className="flex gap-1 md:mb-3 md:block md:space-y-0.5">
                 <div className="hidden px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted md:block">
-                  {phase === 1 ? "Tài chính" : "Nhân sự & lương"}
+                  {phase === 1 ? "Tài chính" : phase === 2 ? "Nhân sự & lương" : "Shop & đơn hàng"}
                 </div>
                 {group.map((s) => (
                   <NavLink key={s.href} href={s.href} muted={!s.built}>

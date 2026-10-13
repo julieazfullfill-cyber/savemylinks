@@ -10,7 +10,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   NHAN_VIEN: "Nhân viên",
 };
 
-export type Screen = { no: number; href: string; label: string; roles: Role[]; phase: 1 | 2; week: number; built?: boolean };
+export type Screen = { no: number; href: string; label: string; roles: Role[]; phase: 1 | 2 | 3; week: number; built?: boolean };
 
 const ALL: Role[] = ["ADMIN", "KE_TOAN", "QUAN_LY", "NHAN_VIEN"];
 // Đặc tả GĐ2 ghi "HR" — hệ thống chưa có vai trò HR (không sửa enum của GĐ1),
@@ -33,6 +33,15 @@ export const SCREENS: Screen[] = [
   { no: 13, href: "/ky-luong", label: "Kỳ lương", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 2, week: 3, built: true },
   { no: 14, href: "/phieu-luong", label: "Phiếu lương", roles: ALL, phase: 2, week: 4, built: true },
   { no: 15, href: "/kpi", label: "KPI & thưởng", roles: ["ADMIN", "QUAN_LY"], phase: 2, week: 5, built: true },
+  // GĐ3 — shop, nhà cung cấp, đơn hàng
+  { no: 16, href: "/shop", label: "Danh mục shop", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 3, week: 1, built: true },
+  { no: 17, href: "/tap-trung", label: "Bản đồ tập trung", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 3, week: 1, built: true },
+  { no: 18, href: "/suc-khoe-shop", label: "Sức khoẻ shop", roles: ["ADMIN", "QUAN_LY"], phase: 3, week: 1, built: true },
+  { no: 19, href: "/ncc", label: "NCC & bảng giá", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 3, week: 2, built: true },
+  { no: 20, href: "/import-don", label: "Import đơn hàng", roles: ["ADMIN", "KE_TOAN"], phase: 3, week: 3 },
+  { no: 21, href: "/don-hang", label: "Đơn hàng", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 3, week: 4 },
+  { no: 22, href: "/doi-soat", label: "Đối soát payout", roles: ["ADMIN", "KE_TOAN"], phase: 3, week: 7 },
+  { no: 23, href: "/bien-lai", label: "Biên lãi theo shop", roles: ["ADMIN", "QUAN_LY", "KE_TOAN"], phase: 3, week: 6 },
 ];
 
 /** Các route không cần đăng nhập. */

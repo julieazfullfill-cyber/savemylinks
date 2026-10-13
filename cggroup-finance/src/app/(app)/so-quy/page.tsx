@@ -200,7 +200,7 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
         {shops.length === 0 ? (
           <p className="mt-3 text-sm text-ink-2">
             Chưa có shop nào.{" "}
-            <Link className="text-accent hover:underline" href="/danh-muc/shop?edit=new">Tạo shop</Link> và chọn kênh (Amazon, Etsy, Walmart, TikTok, Website) để bắt đầu ghi tiền thu theo shop.
+            <Link className="text-accent hover:underline" href="/shop?edit=new">Tạo shop</Link> và chọn kênh (Amazon, Etsy, Walmart, TikTok, Website) để bắt đầu ghi tiền thu theo shop.
           </p>
         ) : (
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

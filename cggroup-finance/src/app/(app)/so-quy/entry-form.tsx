@@ -120,7 +120,7 @@ export function EntryForm({
               </select>
               {!channelShops.length && (
                 <p className="mt-1 text-xs">
-                  <Link className="text-accent hover:underline" href="/danh-muc/shop?edit=new">+ Tạo shop cho kênh này</Link>
+                  <Link className="text-accent hover:underline" href="/shop?edit=new">+ Tạo shop cho kênh này</Link>
                 </p>
               )}
             </div>

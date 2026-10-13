@@ -1,7 +1,6 @@
 // Cấu hình màn hình 8 — Danh mục & người dùng. Mỗi danh mục khai báo trường một lần;
 // trang, form và server action đều đọc từ đây. Không có nút xoá: ngưng dùng bằng `active`.
 import { parseBizDate } from "./dates";
-import { CHANNEL_CODES, CHANNELS } from "./channels";
 import { toMinor } from "./money";
 
 export type RefSource = "account" | "assetAccount" | "entity" | "user" | "provider";
@@ -117,30 +116,7 @@ export const CATALOGS: Catalog[] = [
       active,
     ],
   },
-  {
-    key: "shop",
-    label: "Shop",
-    model: "shop",
-    table: "Shop",
-    idField: "id",
-    fields: [
-      code,
-      name,
-      {
-        name: "channel",
-        label: "Kênh",
-        type: "select",
-        required: true,
-        options: CHANNEL_CODES,
-        optionLabels: Object.fromEntries(CHANNELS.map((c) => [c.code, c.label])),
-        help: "Tiền thu từ shop ghi vào doanh thu của kênh này",
-      },
-      { name: "entityId", label: "Pháp nhân", type: "ref", ref: "entity" },
-      { name: "ownerId", label: "Phụ trách", type: "ref", ref: "user" },
-      { name: "status", label: "Trạng thái", type: "select", required: true, options: ["ACTIVE", "PAUSED", "CLOSED"], default: "ACTIVE" },
-      { name: "openedAt", label: "Ngày mở", type: "date" },
-    ],
-  },
+  // Shop: chuyển sang màn 16 (GĐ3) — bắt buộc pháp nhân + tài khoản nhận tiền, đổi trạng thái có lịch sử.
   {
     key: "phap-nhan",
     label: "Pháp nhân",
