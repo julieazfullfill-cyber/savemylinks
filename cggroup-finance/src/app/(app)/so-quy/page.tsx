@@ -98,7 +98,9 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="max-w-7xl">
-      <PageHead no={2} title="Sổ quỹ" />
+      <PageHead no={2} title="Sổ quỹ">
+        <Link className="btn" href="/so-quy/nhap">Nhập từ sheet 1a</Link>
+      </PageHead>
       <Flash ok={sp.ok} error={sp.error} />
 
       {/* Số dư theo nhóm (Payoneer, Airwallex…) → từng tài khoản/email */}
