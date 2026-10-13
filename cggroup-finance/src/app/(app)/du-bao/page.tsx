@@ -110,7 +110,14 @@ export default async function ForecastPage({ searchParams }: { searchParams: Pro
       </div>
 
       <section className="card mt-4 p-5">
-        <h2 className="font-bold">Số dư cuối tuần</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-bold">Số dư cuối tuần</h2>
+          {floor > 0n && (
+            <span className="flex items-center gap-2 text-xs text-ink-2">
+              <span className="inline-block h-px w-6 bg-crit" aria-hidden /> Ngưỡng tối thiểu {compactVnd(Number(floor))}
+            </span>
+          )}
+        </div>
         <div className="mt-2">
           <ForecastChart rows={rows.map((r) => ({ week: r.week, label: `${ddmm(r.from)}–${ddmm(r.to)}`, closing: Number(r.closing) }))} floor={Number(floor)} />
         </div>

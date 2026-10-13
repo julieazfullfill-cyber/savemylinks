@@ -20,7 +20,9 @@ import {
 } from "../actions";
 import { STATUS_VI, STEPS } from "../status";
 
-const m = (v: bigint) => (v ? formatMoney(v) : "—");
+// Bảng lương dày đặc: số không kèm ký hiệu ₫ (tiêu đề bảng ghi đơn vị), không xuống dòng.
+const num = (v: bigint) => formatMoney(v).replace(" ₫", "");
+const m = (v: bigint) => (v ? num(v) : "—");
 
 export default async function PeriodPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; error?: string }> }) {
   const me = await requireUser(["ADMIN", "KE_TOAN", "QUAN_LY"]);
@@ -165,29 +167,34 @@ export default async function PeriodPage({ params, searchParams }: { params: Pro
         {lines.length === 0 ? (
           <p className="p-6 text-center text-sm text-muted">Chưa tính lương kỳ này.</p>
         ) : (
-          <table className="tbl text-xs">
+          <table className="tbl text-xs [&_td]:whitespace-nowrap">
             <thead>
               <tr>
-                <th>Nhân sự</th><th className="text-right">Công</th><th className="text-right">Phép+lễ</th><th className="text-right">Lương cứng</th>
-                <th className="text-right">Theo công</th><th className="text-right">Phụ cấp</th><th className="text-right">Thưởng DS</th><th className="text-right">Giữ lại</th>
-                <th className="text-right">Hiệu quả</th><th className="text-right">BHXH NLĐ</th><th className="text-right">TNCN</th><th className="text-right">Phạt</th><th className="text-right">Thực nhận</th><th />
+                <th>Nhân sự (đơn vị: đồng)</th><th className="text-right">Thực nhận</th><th /><th className="text-right">Công</th><th className="text-right">Phép+lễ</th>
+                <th className="text-right">Lương cứng</th><th className="text-right">Theo công</th><th className="text-right">Phụ cấp</th><th className="text-right">Thưởng DS</th>
+                <th className="text-right">Giữ lại</th><th className="text-right">Hiệu quả</th><th className="text-right">BHXH NLĐ</th><th className="text-right">TNCN</th><th className="text-right">Phạt</th>
               </tr>
             </thead>
             <tbody>
               {lines.map((l) => (
                 <tr key={l.id}>
-                  <td className="whitespace-nowrap"><span className="font-mono text-muted">{l.employee.code}</span> {l.employee.fullName}{l.note && <div className="text-[11px] text-crit">{l.note}</div>}</td>
+                  <td className="min-w-[170px] max-w-[200px] !whitespace-normal">
+                    <span className="font-mono text-muted">{l.employee.code}</span> {l.employee.fullName}
+                    {l.note && <div className="text-[11px] leading-tight text-crit">{l.note}</div>}
+                  </td>
+                  <td className="text-right font-semibold tabular-nums">{num(l.netVnd)}</td>
+                  <td>{period.status !== "DRAFT" && <Link className="text-accent hover:underline" href={`/phieu-luong?ky=${id}&nv=${l.employeeId}`}>Phiếu</Link>}</td>
                   <td className="text-right tabular-nums">{Number(l.workedDays)}</td>
                   <td className="text-right tabular-nums">{Number(l.leaveDays) || "—"}</td>
                   {[l.baseSalaryVnd, l.proratedVnd, l.allowanceVnd, l.salesBonusVnd].map((v, i) => <td key={i} className="text-right tabular-nums">{m(v)}</td>)}
                   <td className={`text-right tabular-nums ${l.bonusHeldVnd ? "text-crit" : ""}`}>{m(l.bonusHeldVnd)}</td>
                   {[l.perfPayVnd, l.insuranceEmpVnd, l.pitVnd, l.penaltyVnd].map((v, i) => <td key={i} className="text-right tabular-nums">{m(v)}</td>)}
-                  <td className="text-right font-semibold tabular-nums">{formatMoney(l.netVnd)}</td>
-                  <td>{period.status !== "DRAFT" && <Link className="text-accent hover:underline" href={`/phieu-luong?ky=${id}&nv=${l.employeeId}`}>Phiếu</Link>}</td>
                 </tr>
               ))}
               <tr className="bg-page font-semibold">
-                <td>Tổng ({t.headcount} người)</td><td /><td /><td />
+                <td>Tổng ({t.headcount} người)</td>
+                <td className="text-right tabular-nums">{num(t.netVnd)}</td>
+                <td /><td /><td /><td />
                 <td className="text-right tabular-nums">{m(t.proratedVnd)}</td>
                 <td className="text-right tabular-nums">{m(t.allowanceVnd)}</td>
                 <td className="text-right tabular-nums">{m(lines.reduce((s, l) => s + l.salesBonusVnd, 0n))}</td>
@@ -196,8 +203,6 @@ export default async function PeriodPage({ params, searchParams }: { params: Pro
                 <td className="text-right tabular-nums">{m(t.insuranceEmpVnd)}</td>
                 <td className="text-right tabular-nums">{m(t.pitVnd)}</td>
                 <td className="text-right tabular-nums">{m(t.penaltyVnd)}</td>
-                <td className="text-right tabular-nums">{formatMoney(t.netVnd)}</td>
-                <td />
               </tr>
             </tbody>
           </table>

@@ -51,12 +51,8 @@ export function ForecastChart({ rows, floor }: { rows: { week: number; label: st
           </g>
         );
       })}
-      {floor !== 0 && (
-        <g>
-          <line x1={M.left} x2={W - M.right} y1={y(floor)} y2={y(floor)} stroke="#d03b3b" strokeWidth={1} />
-          <text x={W - M.right} y={y(floor) - 5} textAnchor="end" fontSize={10.5} fill="#b32f2f">Ngưỡng tối thiểu {compactVnd(floor)}</text>
-        </g>
-      )}
+      {/* Vạch ngưỡng: chú thích nằm ở chú giải phía trên biểu đồ để không đè lên cột */}
+      {floor !== 0 && <line x1={M.left} x2={W - M.right} y1={y(floor)} y2={y(floor)} stroke="#d03b3b" strokeWidth={1} />}
     </svg>
   );
 }

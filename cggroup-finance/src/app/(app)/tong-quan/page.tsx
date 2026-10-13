@@ -234,7 +234,7 @@ export default async function OverviewPage() {
           })}
         </div>
         <p className="mt-1 text-xs text-muted">
-          Khả dụng = số dư sổ quỹ. Phần bị giam lấy từ lần chốt số dư gần nhất (màn 5 Chốt số dư — sắp có).
+          Khả dụng = số dư sổ quỹ. Phần bị giam lấy từ lần chốt số dư gần nhất (màn 5 Chốt số dư).
         </p>
       </section>
     </div>
