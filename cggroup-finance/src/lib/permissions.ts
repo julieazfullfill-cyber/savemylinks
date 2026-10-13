@@ -32,7 +32,7 @@ export const SCREENS: Screen[] = [
   { no: 12, href: "/nghi-phep", label: "Nghỉ phép", roles: ALL, phase: 2, week: 2, built: true },
   { no: 13, href: "/ky-luong", label: "Kỳ lương", roles: ["ADMIN", "KE_TOAN", "QUAN_LY"], phase: 2, week: 3, built: true },
   { no: 14, href: "/phieu-luong", label: "Phiếu lương", roles: ALL, phase: 2, week: 4, built: true },
-  { no: 15, href: "/kpi", label: "KPI & thưởng", roles: ["ADMIN", "QUAN_LY"], phase: 2, week: 5 },
+  { no: 15, href: "/kpi", label: "KPI & thưởng", roles: ["ADMIN", "QUAN_LY"], phase: 2, week: 5, built: true },
 ];
 
 /** Các route không cần đăng nhập. */
