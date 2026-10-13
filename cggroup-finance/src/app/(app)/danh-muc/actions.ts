@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { audit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { applyProviderDefaults } from "@/lib/cash-accounts";
 import { catalogByKey, parseCatalogForm } from "@/lib/catalog";
 import { prisma, type Tx } from "@/lib/db";
 
@@ -37,6 +38,7 @@ export async function saveCatalogItem(key: string, id: string | null, form: Form
 
   try {
     await prisma.$transaction(async (tx) => {
+      if (cat.model === "cashAccount") data = await applyProviderDefaults(tx, data);
       const d = delegate(tx, cat.model);
       if (id) {
         const where = { [cat.idField]: id };

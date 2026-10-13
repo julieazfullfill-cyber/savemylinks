@@ -9,6 +9,8 @@ export const accounts: [string, string, AccountType][] = [
   ["104", "Airwallex VN", "ASSET"],
   ["105", "Wealify", "ASSET"],
   ["106", "Ví / tài khoản khác", "ASSET"],
+  ["107", "Payoneer", "ASSET"],
+  ["108", "PingPong", "ASSET"],
   ["111", "Số dư trên sàn — khả dụng", "ASSET"],
   ["112", "Số dư trên sàn — bị giam", "ASSET"],
   ["131", "Phải thu", "ASSET"],
@@ -47,16 +49,27 @@ export const accounts: [string, string, AccountType][] = [
   ["702", "Thu chi bất thường", "OTHER"],
 ];
 
+// Nhóm tài khoản tiền — id cố định khớp migration cash_providers. Thêm nhóm mới ở màn 8.
+export const cashProviders = [
+  { id: "prov_payoneer", code: "PAYONEER", name: "Payoneer", kind: "EWALLET", glAccount: "107" },
+  { id: "prov_airwallex", code: "AIRWALLEX", name: "Airwallex", kind: "EWALLET", glAccount: "103" },
+  { id: "prov_pingpong", code: "PINGPONG", name: "PingPong", kind: "EWALLET", glAccount: "108" },
+  { id: "prov_wealify", code: "WEALIFY", name: "Wealify", kind: "EWALLET", glAccount: "105" },
+  { id: "prov_bank", code: "NGAN_HANG", name: "Ngân hàng", kind: "BANK", glAccount: "102" },
+  { id: "prov_cash", code: "TIEN_MAT", name: "Tiền mặt", kind: "CASH", glAccount: "101" },
+  { id: "prov_platform", code: "SAN", name: "Số dư trên sàn", kind: "PLATFORM", glAccount: "111" },
+] as const;
+
 export const cashAccounts = [
-  { code: "TM", name: "Tiền mặt", kind: "CASH", currency: "VND", glAccount: "101" },
-  { code: "BANKVN", name: "Bank Việt", kind: "BANK", currency: "VND", glAccount: "102" },
-  { code: "AWHK", name: "Airwallex HK", kind: "EWALLET", currency: "USD", glAccount: "103" },
-  { code: "AWVN", name: "Airwallex VN", kind: "EWALLET", currency: "USD", glAccount: "104" },
-  { code: "WEALIFY", name: "Wealify", kind: "EWALLET", currency: "USD", glAccount: "105" },
-  { code: "BANKRIENG", name: "Bank riêng khác", kind: "BANK", currency: "VND", glAccount: "106" },
-  { code: "AMZ-AU1", name: "Amazon AU1", kind: "PLATFORM", currency: "USD", glAccount: "111" },
-  { code: "AMZ-SHH", name: "Amazon SHH", kind: "PLATFORM", currency: "USD", glAccount: "111" },
-  { code: "ETSY", name: "Etsy payment", kind: "PLATFORM", currency: "USD", glAccount: "111" },
+  { code: "TM", name: "Tiền mặt", providerId: "prov_cash", kind: "CASH", currency: "VND", glAccount: "101" },
+  { code: "BANKVN", name: "Bank Việt", providerId: "prov_bank", kind: "BANK", currency: "VND", glAccount: "102" },
+  { code: "AWHK", name: "Airwallex HK", providerId: "prov_airwallex", kind: "EWALLET", currency: "USD", glAccount: "103" },
+  { code: "AWVN", name: "Airwallex VN", providerId: "prov_airwallex", kind: "EWALLET", currency: "USD", glAccount: "104" },
+  { code: "WEALIFY", name: "Wealify", providerId: "prov_wealify", kind: "EWALLET", currency: "USD", glAccount: "105" },
+  { code: "BANKRIENG", name: "Bank riêng khác", providerId: "prov_bank", kind: "BANK", currency: "VND", glAccount: "106" },
+  { code: "AMZ-AU1", name: "Amazon AU1", providerId: "prov_platform", kind: "PLATFORM", currency: "USD", glAccount: "111" },
+  { code: "AMZ-SHH", name: "Amazon SHH", providerId: "prov_platform", kind: "PLATFORM", currency: "USD", glAccount: "111" },
+  { code: "ETSY", name: "Etsy payment", providerId: "prov_platform", kind: "PLATFORM", currency: "USD", glAccount: "111" },
 ] as const;
 
 // prepaid + creditDays chạy thẳng vào dự báo dòng tiền — điền cho chuẩn (đặc tả mục 03).
@@ -102,8 +115,12 @@ export async function seedCatalog(db: PrismaClient) {
   for (const [code, name, type] of accounts) {
     await db.account.upsert({ where: { code }, create: { code, name, type }, update: { name, type } });
   }
+  for (const p of cashProviders) {
+    await db.cashProvider.upsert({ where: { code: p.code }, create: p, update: { name: p.name } });
+  }
   for (const a of cashAccounts) {
-    await db.cashAccount.upsert({ where: { code: a.code }, create: a, update: { name: a.name, glAccount: a.glAccount } });
+    // Chỉ tạo nếu chưa có — không ghi đè nhóm/email/TK kế toán đã sửa ở màn 8.
+    await db.cashAccount.upsert({ where: { code: a.code }, create: a, update: {} });
   }
   for (const s of suppliers) {
     // Không ghi đè prepaid/creditDays đã sửa tay qua màn hình Danh mục.

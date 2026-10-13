@@ -4,7 +4,7 @@ import { parseBizDate } from "./dates";
 import { CHANNEL_CODES, CHANNELS } from "./channels";
 import { toMinor } from "./money";
 
-export type RefSource = "account" | "assetAccount" | "entity" | "user";
+export type RefSource = "account" | "assetAccount" | "entity" | "user" | "provider";
 
 export type Field = {
   name: string;
@@ -29,11 +29,14 @@ export type Field = {
 export type Catalog = {
   key: string;
   label: string;
-  model: "account" | "cashAccount" | "expenseCategory" | "supplier" | "shop" | "legalEntity" | "user";
+  model: "account" | "cashProvider" | "cashAccount" | "expenseCategory" | "supplier" | "shop" | "legalEntity" | "user";
   table: string;
   idField: "id" | "code";
   fields: Field[];
 };
+
+export const ACCOUNT_KINDS = ["EWALLET", "BANK", "PLATFORM", "CASH"] as const;
+export const KIND_LABELS: Record<string, string> = { EWALLET: "Ví điện tử", BANK: "Ngân hàng", PLATFORM: "Số dư trên sàn", CASH: "Tiền mặt" };
 
 const active: Field = { name: "active", label: "Đang dùng", type: "bool", default: true };
 const code: Field = { name: "code", label: "Mã", type: "text", required: true, immutable: true };
@@ -53,17 +56,32 @@ export const CATALOGS: Catalog[] = [
     ],
   },
   {
+    key: "nhom-tai-khoan-tien",
+    label: "Nhóm tài khoản tiền",
+    model: "cashProvider",
+    table: "CashProvider",
+    idField: "id",
+    fields: [
+      { ...code, help: "Ví dụ PAYONEER, AIRWALLEX, PINGPONG" },
+      name,
+      { name: "kind", label: "Loại", type: "select", required: true, options: ACCOUNT_KINDS, optionLabels: KIND_LABELS },
+      { name: "glAccount", label: "TK kế toán mặc định", type: "ref", ref: "assetAccount", required: true, help: "Tài khoản tiền trong nhóm dùng TK này nếu không chọn riêng" },
+      active,
+    ],
+  },
+  {
     key: "tai-khoan-tien",
     label: "Tài khoản tiền",
     model: "cashAccount",
     table: "CashAccount",
     idField: "id",
     fields: [
-      code,
+      { name: "providerId", label: "Nhóm", type: "ref", ref: "provider", required: true },
+      { name: "email", label: "Email tài khoản", type: "email", help: "Email đăng nhập ví — không trùng trong cùng nhóm" },
+      { ...code, help: "Mã ngắn, ví dụ PO-SALES01" },
       name,
-      { name: "kind", label: "Loại", type: "select", required: true, options: ["BANK", "EWALLET", "PLATFORM", "CASH"] },
       { name: "currency", label: "Tiền tệ", type: "select", required: true, immutable: true, options: ["VND", "USD"] },
-      { name: "glAccount", label: "TK kế toán", type: "ref", ref: "assetAccount", required: true },
+      { name: "glAccount", label: "TK kế toán", type: "ref", ref: "assetAccount", help: "Trống = theo nhóm" },
       { name: "entityId", label: "Pháp nhân", type: "ref", ref: "entity" },
       active,
     ],

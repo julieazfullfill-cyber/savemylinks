@@ -172,19 +172,38 @@ model Shop {
 
 // ───────────────────────── tiền & sổ ─────────────────────────
 
-model CashAccount {
-  id        String       @id @default(cuid())
-  code      String       @unique
+/// Nhóm tài khoản tiền: Payoneer, Airwallex, PingPong, Ngân hàng… — tạo ở màn 8.
+/// glAccount là tài khoản kế toán mặc định cho các tài khoản tiền trong nhóm.
+model CashProvider {
+  id        String      @id @default(cuid())
+  code      String      @unique
   name      String
   kind      AccountKind
-  currency  Currency
-  entityId  String?
-  entity    LegalEntity? @relation(fields: [entityId], references: [id])
-  glAccount String // Account.code tương ứng
-  active    Boolean      @default(true)
+  glAccount String
+  active    Boolean     @default(true)
+
+  accounts CashAccount[]
+}
+
+model CashAccount {
+  id         String       @id @default(cuid())
+  code       String       @unique
+  name       String
+  /// Bổ sung: tài khoản tiền thuộc một nhóm (Payoneer, Airwallex…), nhận diện bằng email đăng nhập.
+  providerId String
+  provider   CashProvider @relation(fields: [providerId], references: [id])
+  email      String?
+  kind       AccountKind
+  currency   Currency
+  entityId   String?
+  entity     LegalEntity? @relation(fields: [entityId], references: [id])
+  glAccount  String // Account.code tương ứng — mặc định theo nhóm
+  active     Boolean      @default(true)
 
   txns     CashTxn[]
   balances AccountBalance[]
+
+  @@unique([providerId, email])
 }
 
 /// Số dư chốt cuối ngày. 'reserved' là phần sàn đang giam.

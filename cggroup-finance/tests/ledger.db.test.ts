@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { parseBizDate } from "@/lib/dates";
+import { applyProviderDefaults } from "@/lib/cash-accounts";
 import { postCashTxn, voidCashTxn } from "@/lib/ledger";
 import { seedCatalog } from "../prisma/seed-data";
 
@@ -69,6 +70,32 @@ describe("postCashTxn", () => {
         }),
       ),
     ).rejects.toThrow(/Chưa có tỷ giá/);
+  });
+});
+
+describe("nhóm tài khoản tiền", () => {
+  it("tài khoản mới theo nhóm: loại + TK kế toán mặc định; email không trùng trong nhóm", async () => {
+    const payoneer = await prisma.cashProvider.findUniqueOrThrow({ where: { code: "PAYONEER" } });
+    const data = await prisma.$transaction((tx) =>
+      applyProviderDefaults(tx, { providerId: payoneer.id, glAccount: null as string | null, kind: "BANK" }),
+    );
+    expect(data).toMatchObject({ kind: "EWALLET", glAccount: "107" });
+
+    const make = (code: string, providerId: string) =>
+      prisma.cashAccount.create({
+        data: { code, name: code, providerId, email: "sales01@cg.vn", kind: "EWALLET", currency: "USD", glAccount: "107" },
+      });
+    const acc = await make("PO-SALES01", payoneer.id);
+    await expect(make("PO-SALES01B", payoneer.id)).rejects.toThrow(/Unique constraint/);
+    // Cùng email ở nhóm khác thì được (một email có thể mở cả Payoneer lẫn PingPong).
+    const pingpong = await prisma.cashProvider.findUniqueOrThrow({ where: { code: "PINGPONG" } });
+    await expect(make("PP-SALES01", pingpong.id)).resolves.toBeTruthy();
+
+    // Ghi giao dịch vào tài khoản Payoneer → bút toán dùng TK 107.
+    const txn = await prisma.$transaction((tx) =>
+      postCashTxn(tx, { date: parseBizDate("2026-11-05"), accountId: acc.id, direction: "IN", amount: 100n, description: "x", actorId: "test" }),
+    );
+    expect((await linesOf(txn.journalId!))[0].accountCode).toBe("107");
   });
 });
 

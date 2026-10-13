@@ -10,7 +10,7 @@ import { Badge, Field, Flash, PageHead } from "../ui";
 import { createCashTxn, saveFxRate, voidCashTxnAction } from "./actions";
 import { EntryForm } from "./entry-form";
 
-type SP = { acc?: string; from?: string; to?: string; cat?: string; ch?: string; shop?: string; voided?: string; ok?: string; error?: string };
+type SP = { prov?: string; acc?: string; from?: string; to?: string; cat?: string; ch?: string; shop?: string; voided?: string; ok?: string; error?: string };
 
 const safeDate = (s: string | undefined, fallback: Date) => {
   try {
@@ -31,7 +31,7 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
 
   // Giữ bộ lọc khi submit form (server action redirect về đúng trang đang xem).
   const keep = new URLSearchParams();
-  for (const k of ["acc", "from", "to", "cat", "ch", "shop", "voided"] as const) if (sp[k]) keep.set(k, sp[k]!);
+  for (const k of ["prov", "acc", "from", "to", "cat", "ch", "shop", "voided"] as const) if (sp[k]) keep.set(k, sp[k]!);
   const qs = keep.toString();
 
   const shops = await prisma.shop.findMany({ orderBy: [{ channel: "asc" }, { code: "asc" }] });
@@ -40,19 +40,23 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
 
   const where: Prisma.CashTxnWhereInput = {
     date: { gte: from, lte: to },
-    ...(sp.acc ? { accountId: sp.acc } : {}),
+    ...(sp.acc ? { accountId: sp.acc } : sp.prov ? { account: { providerId: sp.prov } } : {}),
     ...(sp.cat ? { categoryId: sp.cat } : {}),
     ...(sp.shop ? { shopId: sp.shop } : channelShopIds ? { shopId: { in: channelShopIds } } : {}),
     ...(sp.voided ? {} : { voidedAt: null }),
   };
 
   const [accounts, categories, suppliers, txns, sums, lastFx, users] = await Promise.all([
-    prisma.cashAccount.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
+    prisma.cashAccount.findMany({
+      where: { active: true },
+      include: { provider: true },
+      orderBy: [{ provider: { name: "asc" } }, { code: "asc" }],
+    }),
     prisma.expenseCategory.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.cashTxn.findMany({
       where,
-      include: { account: true, category: true, journal: { select: { source: true } } },
+      include: { account: { include: { provider: true } }, category: true, journal: { select: { source: true } } },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: 300,
     }),
@@ -83,7 +87,9 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
   });
   const shopIncomeTotal = byChannel.reduce((a, c) => a + c.vnd, 0n);
 
-  const accountOpts = accounts.map((a) => ({ value: a.id, label: `${a.code} · ${a.name} (${a.currency})` }));
+  const accountOpts = accounts.map((a) => ({ value: a.id, label: `${a.code} · ${a.email ?? a.name} (${a.currency})`, group: a.provider.name }));
+  // Mọi nhóm đang dùng, kể cả nhóm chưa có tài khoản (để thấy chỗ thêm).
+  const providers = await prisma.cashProvider.findMany({ where: { active: true }, orderBy: { name: "asc" } });
   const channelOpts = CHANNELS.map((c) => ({ value: c.code, label: c.label }));
   const filterLink = (extra: Record<string, string>) => {
     const p = new URLSearchParams({ from: bizDateStr(from), to: bizDateStr(to), ...extra });
@@ -95,15 +101,51 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
       <PageHead no={2} title="Sổ quỹ" />
       <Flash ok={sp.ok} error={sp.error} />
 
-      {/* Số dư từng tài khoản */}
-      <div className="mt-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {accounts.map((a) => {
-          const b = balance(a.id);
+      {/* Số dư theo nhóm (Payoneer, Airwallex…) → từng tài khoản/email */}
+      <div className="mt-5 flex items-baseline justify-between">
+        <h2 className="font-bold">Số dư tài khoản tiền</h2>
+        <span className="text-xs">
+          <Link className="text-accent hover:underline" href="/danh-muc/nhom-tai-khoan-tien?edit=new">+ Nhóm</Link>
+          {" · "}
+          <Link className="text-accent hover:underline" href="/danh-muc/tai-khoan-tien?edit=new">+ Tài khoản</Link>
+        </span>
+      </div>
+      <div className="mt-2 space-y-3">
+        {providers.map((p) => {
+          const list = accounts.filter((a) => a.providerId === p.id);
+          const subtotal = new Map<Currency, bigint>();
+          for (const a of list) subtotal.set(a.currency as Currency, (subtotal.get(a.currency as Currency) ?? 0n) + balance(a.id));
           return (
-            <a key={a.id} href={`/so-quy?acc=${a.id}`} className={`card block p-3 hover:border-accent ${sp.acc === a.id ? "border-accent" : ""}`}>
-              <div className="truncate text-xs text-muted">{a.code} · {a.name}</div>
-              <div className={`mt-0.5 font-bold tabular-nums ${b < 0n ? "text-crit" : ""}`}>{formatMoney(b, a.currency as Currency)}</div>
-            </a>
+            <div key={p.id} className={`card p-3 ${sp.prov === p.id ? "border-accent" : ""}`}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <Link className="font-semibold hover:text-accent" href={`/so-quy?prov=${p.id}`}>{p.name}</Link>
+                <span className="text-sm tabular-nums">
+                  {[...subtotal].map(([cur, v], i) => (
+                    <span key={cur} className={v < 0n ? "text-crit" : ""}>{i > 0 && " · "}{formatMoney(v, cur)}</span>
+                  ))}
+                </span>
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {list.map((a) => {
+                  const b = balance(a.id);
+                  return (
+                    <Link
+                      key={a.id}
+                      href={`/so-quy?acc=${a.id}`}
+                      className={`block rounded-md border px-3 py-2 hover:border-accent ${sp.acc === a.id ? "border-accent" : "border-hair"}`}
+                    >
+                      <div className="truncate text-xs text-muted" title={a.email ?? a.name}>{a.code} · {a.email ?? a.name}</div>
+                      <div className={`font-bold tabular-nums ${b < 0n ? "text-crit" : ""}`}>{formatMoney(b, a.currency as Currency)}</div>
+                    </Link>
+                  );
+                })}
+                {!list.length && (
+                  <Link className="rounded-md border border-dashed border-hair px-3 py-2 text-sm text-accent hover:border-accent" href="/danh-muc/tai-khoan-tien?edit=new">
+                    + Thêm tài khoản {p.name}
+                  </Link>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -183,7 +225,8 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
 
       {/* Lọc */}
       <form method="get" className="card mt-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Field name="acc" label="Tài khoản" empty="Tất cả" defaultValue={sp.acc} options={accountOpts} />
+        <Field name="prov" label="Nhóm tài khoản" empty="Tất cả" defaultValue={sp.prov} options={providers.map((p) => ({ value: p.id, label: p.name }))} />
+        <Field name="acc" label="Tài khoản" empty="Tất cả" defaultValue={sp.acc} options={accountOpts.map((a) => ({ value: a.value, label: `${a.group} · ${a.label}` }))} />
         <Field name="from" label="Từ ngày" type="date" defaultValue={bizDateStr(from)} />
         <Field name="to" label="Đến ngày" type="date" defaultValue={bizDateStr(to)} />
         <Field name="cat" label="Hạng mục" empty="Tất cả" defaultValue={sp.cat} options={categories.map((c) => ({ value: c.id, label: c.name }))} />
@@ -225,7 +268,10 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
               return (
                 <tr key={t.id} className={t.voidedAt ? "opacity-50" : ""}>
                   <td className="whitespace-nowrap tabular-nums">{fmtBizDate(t.date)}</td>
-                  <td className="whitespace-nowrap">{t.account.code}</td>
+                  <td className="whitespace-nowrap">
+                    <span className="text-xs text-muted">{t.account.provider.name} · </span>
+                    {t.account.code}
+                  </td>
                   <td><Badge tone={KIND_TONE[t.kind]}>{KIND_LABEL[t.kind]}</Badge></td>
                   <td className="whitespace-nowrap text-right tabular-nums">{formatMoney(t.amount, t.currency as Currency)}</td>
                   <td className="whitespace-nowrap text-right tabular-nums">

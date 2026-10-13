@@ -20,7 +20,8 @@ export function EntryForm({
   fxPlaceholder,
 }: {
   action: (form: FormData) => void | Promise<void>;
-  accounts: Opt[];
+  /** group = tên nhóm (Payoneer, Airwallex…) để chia optgroup */
+  accounts: (Opt & { group: string })[];
   categories: Opt[];
   suppliers: Opt[];
   shops: ShopOpt[];
@@ -76,8 +77,14 @@ export function EntryForm({
           <label className="label" htmlFor="accountId">{kind === "OUT" ? "Chi từ tài khoản" : "Tiền về tài khoản"}<span className="text-crit"> *</span></label>
           <select className="input" id="accountId" name="accountId" required defaultValue={defaultAccount ?? ""}>
             <option value="">Chọn…</option>
-            {accounts.map((a) => (
-              <option key={a.value} value={a.value}>{a.label}</option>
+            {[...new Set(accounts.map((a) => a.group))].map((g) => (
+              <optgroup key={g} label={g}>
+                {accounts
+                  .filter((a) => a.group === g)
+                  .map((a) => (
+                    <option key={a.value} value={a.value}>{a.label}</option>
+                  ))}
+              </optgroup>
             ))}
           </select>
         </div>

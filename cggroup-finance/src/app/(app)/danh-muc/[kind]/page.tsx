@@ -11,10 +11,11 @@ type Row = Record<string, unknown>;
 type RefOptions = Record<RefSource, { value: string; label: string }[]>;
 
 async function loadRefs(): Promise<RefOptions> {
-  const [accounts, entities, users] = await Promise.all([
+  const [accounts, entities, users, providers] = await Promise.all([
     prisma.account.findMany({ orderBy: { code: "asc" } }),
     prisma.legalEntity.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.cashProvider.findMany({ orderBy: { name: "asc" } }),
   ]);
   const acc = (a: (typeof accounts)[number]) => ({ value: a.code, label: `${a.code} · ${a.name}` });
   return {
@@ -22,11 +23,18 @@ async function loadRefs(): Promise<RefOptions> {
     assetAccount: accounts.filter((a) => a.type === "ASSET").map(acc),
     entity: entities.map((e) => ({ value: e.id, label: `${e.code} · ${e.name}` })),
     user: users.map((u) => ({ value: u.id, label: u.name })),
+    provider: providers.map((p) => ({ value: p.id, label: p.active ? p.name : `${p.name} (ngưng)` })),
   };
 }
 
 async function loadRows(cat: Catalog): Promise<Row[]> {
-  const orderBy = cat.model === "user" ? { email: "asc" as const } : { code: "asc" as const };
+  // Tài khoản tiền xếp theo nhóm rồi mã — các tài khoản cùng Payoneer/Airwallex nằm cạnh nhau.
+  const orderBy =
+    cat.model === "user"
+      ? { email: "asc" as const }
+      : cat.model === "cashAccount"
+        ? [{ provider: { name: "asc" as const } }, { code: "asc" as const }]
+        : { code: "asc" as const };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (prisma as any)[cat.model].findMany({ orderBy });
 }

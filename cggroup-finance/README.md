@@ -78,6 +78,9 @@ tests/                                  money, forecast, catalog, ledger.db
 - **Tiền thu chia theo 5 kênh** (`src/lib/channels.ts`): Amazon 402, Etsy 401, Walmart 405 (thêm mới), TikTok 403,
   Website 404. Mỗi shop thuộc một kênh (CHECK `shop_channel` ở DB). Sổ quỹ có 4 loại: Chi, **Thu từ shop**
   (bắt buộc chọn kênh → shop, Có doanh thu của kênh), Thu khác (409 — hoàn tiền NCC, góp vốn…), Số dư đầu kỳ (Có 301).
+- **Nhóm tài khoản tiền** (bảng `CashProvider`, tạo ở màn 8 tab "Nhóm tài khoản tiền"): Payoneer (TK 107, mới),
+  Airwallex (103), PingPong (108, mới), Wealify, Ngân hàng, Tiền mặt, Số dư trên sàn. Mỗi tài khoản tiền thuộc
+  một nhóm, nhận diện bằng email (không trùng trong cùng nhóm); loại theo nhóm, TK kế toán trống thì lấy của nhóm.
 - Dự báo: giá vốn tính từ doanh số đều theo tuần (không theo payout bị dồn); khoản thu nhập tay nhân
   `confidence`, khoản chi luôn tính đủ 100%; hoá đơn quá hạn dồn vào tuần 1.
 - Phân quyền màn hình (Giám đốc = vai trò `QUAN_LY`) nằm ở `src/lib/permissions.ts`.
