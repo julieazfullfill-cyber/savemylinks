@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   const screens = SCREENS.filter((s) => s.roles.includes(user.role));
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[230px_1fr]">
+    <div className="min-h-screen md:grid md:grid-cols-[250px_1fr]">
       <aside className="border-b border-hair bg-surface md:min-h-screen md:border-r md:border-b-0">
         <div className="px-5 py-4">
           <Link href="/" className="text-xs font-semibold uppercase tracking-widest text-accent">CGGroup</Link>

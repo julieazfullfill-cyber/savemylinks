@@ -18,7 +18,7 @@ const ALL: Role[] = ["ADMIN", "KE_TOAN", "QUAN_LY", "NHAN_VIEN"];
 const HR: Role[] = ["ADMIN", "QUAN_LY"];
 
 export const SCREENS: Screen[] = [
-  { no: 1, href: "/tong-quan", label: "Tổng quan tiền", roles: ["ADMIN", "QUAN_LY"], phase: 1, week: 4 },
+  { no: 1, href: "/tong-quan", label: "Tổng quan tiền", roles: ["ADMIN", "QUAN_LY"], phase: 1, week: 4, built: true },
   { no: 2, href: "/so-quy", label: "Sổ quỹ", roles: ["ADMIN", "KE_TOAN"], phase: 1, week: 2, built: true },
   { no: 3, href: "/chi-phi", label: "Chi phí & duyệt chi", roles: ALL, phase: 1, week: 3 },
   { no: 4, href: "/cong-no", label: "Công nợ nhà cung cấp", roles: ["ADMIN", "KE_TOAN"], phase: 1, week: 3 },
