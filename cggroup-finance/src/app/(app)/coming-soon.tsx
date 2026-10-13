@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SCREENS } from "@/lib/permissions";
 
 /** Khung cho màn hình chưa làm — ghi rõ tuần dự kiến theo kế hoạch 5 tuần. */
@@ -12,6 +13,14 @@ export function ComingSoon({ href, children }: { href: string; children?: React.
           Theo kế hoạch, màn hình này làm ở <strong>tuần {s.week}</strong> của giai đoạn {s.phase === 1 ? "1b" : "2"}.
         </p>
         {children}
+        <p className="mt-3">Các màn hình đã nhập được dữ liệu:</p>
+        <ul className="mt-1 list-disc pl-5">
+          {SCREENS.filter((x) => x.built).map((x) => (
+            <li key={x.href}>
+              <Link className="text-accent hover:underline" href={x.href}>{x.no}. {x.label}</Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

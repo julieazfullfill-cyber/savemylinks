@@ -72,6 +72,28 @@ describe("postCashTxn", () => {
   });
 });
 
+describe("số dư đầu kỳ", () => {
+  it("Nợ TK tiền / Có 301, nguồn OPENING; không cho gắn hạng mục hay ghi chi", async () => {
+    const txn = await prisma.$transaction((tx) =>
+      postCashTxn(tx, {
+        date: parseBizDate("2026-10-31"), accountId: vndAccountId, direction: "IN", opening: true,
+        amount: 150_000_000n, description: "Số dư đầu kỳ 31/10", actorId: "test",
+      }),
+    );
+    const j = await prisma.journalEntry.findUniqueOrThrow({ where: { id: txn.journalId! }, include: { lines: true } });
+    expect(j.source).toBe("OPENING");
+    expect(j.lines.map((l) => l.accountCode).sort()).toEqual(["102", "301"]);
+    await expect(
+      prisma.$transaction((tx) =>
+        postCashTxn(tx, {
+          date: parseBizDate("2026-10-31"), accountId: vndAccountId, direction: "OUT", opening: true,
+          amount: 1n, description: "x", actorId: "test",
+        }),
+      ),
+    ).rejects.toThrow(/Số dư đầu kỳ là khoản thu/);
+  });
+});
+
 describe("voidCashTxn", () => {
   it("không xoá: đánh dấu voidedAt + bút toán ngược, sổ cái về 0", async () => {
     const txn = await prisma.$transaction((tx) =>

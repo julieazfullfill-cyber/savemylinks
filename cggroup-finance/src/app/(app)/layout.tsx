@@ -24,9 +24,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   {phase === 1 ? "Tài chính" : "Nhân sự & lương"}
                 </div>
                 {group.map((s) => (
-                  <NavLink key={s.href} href={s.href}>
+                  <NavLink key={s.href} href={s.href} muted={!s.built}>
                     <span className="w-5 text-right text-xs text-muted tabular-nums">{s.no}</span>
                     {s.label}
+                    {!s.built && <span className="ml-auto text-[10px] text-muted">sắp có</span>}
                   </NavLink>
                 ))}
               </div>

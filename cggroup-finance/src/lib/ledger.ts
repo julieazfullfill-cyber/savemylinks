@@ -76,7 +76,12 @@ export type CashTxnInput = {
   shopId?: string | null;
   description: string;
   actorId: string;
+  /** Số dư đầu kỳ: thu vào, đối ứng 301 Vốn chủ sở hữu, bút toán nguồn OPENING. */
+  opening?: boolean;
 };
+
+/** Tài khoản đối ứng của bút toán số dư đầu kỳ. */
+export const OPENING_COUNTER = "301";
 
 /** Ghi một giao dịch tiền + bút toán + audit. Gọi bên trong prisma.$transaction. */
 export async function postCashTxn(tx: Tx, input: CashTxnInput) {
@@ -89,7 +94,10 @@ export async function postCashTxn(tx: Tx, input: CashTxnInput) {
   const amountVnd = toVnd(input.amount, currency, fxRate);
   if (amountVnd <= 0n) throw new Error("Số tiền quy đổi VND bằng 0");
 
-  let counterGl: string = DEFAULT_COUNTER[input.direction];
+  if (input.opening && (input.direction !== "IN" || input.categoryId)) {
+    throw new Error("Số dư đầu kỳ là khoản thu, không gắn hạng mục");
+  }
+  let counterGl: string = input.opening ? OPENING_COUNTER : DEFAULT_COUNTER[input.direction];
   if (input.categoryId) {
     const cat = await tx.expenseCategory.findUniqueOrThrow({ where: { id: input.categoryId } });
     counterGl = cat.accountCode;
@@ -109,7 +117,7 @@ export async function postCashTxn(tx: Tx, input: CashTxnInput) {
     data: {
       date: input.date,
       memo: input.description,
-      source: "CASH_TXN",
+      source: input.opening ? "OPENING" : "CASH_TXN",
       createdBy: input.actorId,
       lines: { create: lines },
     },
