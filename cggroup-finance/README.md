@@ -1,11 +1,12 @@
-# CGGroup — Hệ thống tài chính & nhân sự
+# CGGroup — Tài chính, nhân sự, shop & đơn hàng
 
 Xây theo đặc tả:
 - Giai đoạn 1 (tài chính): https://claude.ai/artifact/EtgCxATpUvTUtKCpJEghnW
 - Giai đoạn 2 (nhân sự, chấm công, lương, KPI): https://claude.ai/artifact/7sjsZZxEwv4q2PGCoGbo1i
+- Giai đoạn 3 (shop, nhà cung cấp, đơn hàng): https://claude.ai/artifact/D2kfxhyzcpapDHUB3G1JEx
 
 Next.js 15 (App Router, server actions) · Prisma 6 · PostgreSQL 16 · Tailwind 4 · Vitest.
-**Cả 15 màn hình của hai giai đoạn đã làm xong.**
+**Cả 23 màn hình của ba giai đoạn đã làm xong.**
 
 ## Chạy
 
@@ -27,6 +28,7 @@ Máy dev: Postgres `F:\pgdev16`, port 5433; role/database `cggroup` / `cggroup_f
 | `npm test` | Toàn bộ test (unit + DB). Mỗi file `*.db.test.ts` có schema Postgres riêng, xong thì xoá |
 | `npm run test:unit` | Chỉ test thuần, không cần DB |
 | `npm run payroll:selftest` | Self-test lương tháng 8 (đặc tả GĐ2 mục 09) — phải in `OK` |
+| `npm run phase3:selftest` | Self-test GĐ3 tháng 8 (biên lãi, import, payout, cảnh báo) — phải in `OK` |
 | `npm run typecheck` / `lint` | |
 | `scripts/backup.ps1` | Sao lưu `pg_dump` vào `backups/`, giữ 30 bản. `-Register` để chạy 23:30 hằng ngày |
 | `scripts/restore-test.ps1` | Khôi phục bản mới nhất vào DB tạm, so số dòng mọi bảng, xoá DB tạm |
@@ -51,6 +53,14 @@ Máy dev: Postgres `F:\pgdev16`, port 5433; role/database `cggroup` / `cggroup_f
 | 13 | Kỳ lương | Admin, Kế toán, Quản lý | Nháp → Tính → Duyệt (bút toán) → Chi (Nợ 202) → Khoá; nộp BHXH (203) / thuế (204) |
 | 14 | Phiếu lương | Mọi người | In được; nhân viên chỉ thấy phiếu của mình |
 | 15 | KPI & thưởng | Admin, Quản lý | Tiền về (gợi ý từ Sổ quỹ) − FF − chi phí chung phân bổ; bậc thưởng; phê duyệt vượt cấp |
+| 16 | Danh mục shop | Admin, Quản lý, Kế toán | Bắt buộc pháp nhân + tài khoản nhận tiền; đổi trạng thái ghi lịch sử; nghĩa vụ pháp nhân (vào dự báo) |
+| 17 | Bản đồ tập trung | Admin, Quản lý, Kế toán | Tỷ trọng tiền thu theo tài khoản nhận, đỏ khi > 40% |
+| 18 | Sức khoẻ shop | Admin, Quản lý | Lịch sử trạng thái, số lần sự cố theo kênh / người phụ trách |
+| 19 | NCC & bảng giá | Admin, Quản lý, Kế toán | Điều khoản thanh toán, bảng giá theo thời kỳ, so sánh giá, thực trả vs bảng giá |
+| 20 | Import đơn hàng | Admin, Kế toán | CSV 5 sàn, xem trước, cột khớp/thiếu, lỗi theo dòng; nạp đơn fulfill từ NCC |
+| 21 | Đơn hàng | Admin, Kế toán, Quản lý | Lọc shop/kênh/tháng/đơn lỗ/chưa ghép; chi tiết đơn, ghép fulfill, hoàn tiền, biên lãi |
+| 22 | Đối soát payout | Admin, Kế toán | Payout + dòng, ghép với đơn (ngưỡng lệch 1%), ghi tiền về vào Sổ quỹ |
+| 23 | Biên lãi theo shop | Admin, Quản lý, Kế toán | Xếp hạng kênh / shop / design sau phân bổ chi phí chung, điểm hoà vốn |
 
 ## Sổ kép — mỗi nghiệp vụ ghi gì
 
@@ -97,6 +107,16 @@ Tài khoản tiền: Tiền mặt 101, Ngân hàng 102, Airwallex 103/104, Weali
 - Thực nhận âm (thiếu chấm công) → kỳ lương báo lỗi kèm tên, không tính.
 - `bonusGate` khi chưa nhập lợi nhuận kỳ: giữ thưởng. Vai trò HR = Admin + Quản lý.
 - Ngày tính lương = công chấm + phép có lương + lễ có lương (T2–T7), hợp đồng lấy theo ngày làm cuối trong tháng.
+
+**GĐ3**
+- Đơn hàng là dữ liệu **phân tích**, không ghi sổ cái: doanh thu vào sổ khi tiền về (payout → “Thu từ shop”), tránh ghi hai lần. Sổ kép đầy đủ theo đơn: GĐ4.
+- Thêm **Walmart** (bảng giá payout và tên cột CSV — cần đối chiếu file/tài khoản thật).
+- `Shop.payoutAccountId`, `Payout.shopId`, `PayoutLine.externalOrderId`, `FulfillmentOrder.sku`; tab Shop ở màn 8 chuyển sang màn 16; giá trị trạng thái cũ PAUSED → UNDER_REVIEW.
+- Chi phí cố định (~19.800 USD trong đặc tả) **lấy từ sổ cái** (TK 60x mỗi tháng, quy USD cuối tháng), không gõ tay.
+- Đơn CSV nhiều dòng sản phẩm được **gộp** thành nhiều mặt hàng (cột cấp mặt hàng cộng dồn, cột cấp đơn lấy một lần).
+- Đối soát chấp nhận lệch ≤ 1% net; dự báo thêm cột **Đơn chờ về** (đơn đã bán chưa vào payout, theo lịch payout thật); kênh có dữ liệu đơn thì doanh thu trung bình chỉ tính cho đơn bán sau ngày bắt đầu.
+- Bảng giá NCC theo thời kỳ như hợp đồng lương (giá mới đóng giá cũ, DB chặn chồng thời gian). Design / sản phẩm / SKU khai ở màn 8.
+- Email tóm tắt buổi sáng chưa làm — cảnh báo GĐ3 hiện ở màn 1 mỗi lần mở.
 
 ## Cần kế toán xác nhận
 

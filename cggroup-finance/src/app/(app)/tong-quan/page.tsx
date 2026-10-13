@@ -175,6 +175,21 @@ export default async function OverviewPage() {
             ))}
           </div>
         )}
+        {alerts.length > 3 && (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-sm text-accent">Xem tất cả {alerts.length} cảnh báo</summary>
+            <ul className="card mt-2 divide-y divide-hair">
+              {alerts.slice(3).map((al, i) => (
+                <li key={i} className="p-3 text-sm">
+                  <Link href={al.href} className="font-semibold hover:text-accent">
+                    <span aria-hidden>{SEV[al.severity].icon}</span> {SEV[al.severity].label}: {al.title}
+                  </Link>
+                  <p className="text-ink-2">{al.detail}</p>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
 
       {/* Biểu đồ 90 ngày */}

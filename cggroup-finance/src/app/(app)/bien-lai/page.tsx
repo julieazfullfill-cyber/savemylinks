@@ -97,9 +97,20 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
           <h2 className="font-bold">Điểm hoà vốn</h2>
           <p className="mt-1 text-ink-2">
             Ở tỷ lệ FF hiện tại {pct(ffRatio)} cần <strong>{usd(breakEvenRevenue(fixedUsd, ffRatio))}</strong> doanh thu để hoà vốn (đang có {usd(total.rev)}).
-            Kéo FF về {pct(FF_RATIO_TARGET)} thì chỉ cần <strong>{usd(breakEvenRevenue(fixedUsd, FF_RATIO_TARGET))}</strong>
-            {breakEvenRevenue(fixedUsd, FF_RATIO_TARGET) <= total.rev && <> — <strong className="text-good">hết lỗ mà không cần bán thêm đơn nào</strong></>}.
-            Mỗi 1 điểm % FF cắt được đáng khoảng {usd(total.rev / 100)}.
+            {ffRatio > FF_RATIO_TARGET ? (
+              <>
+                Kéo FF về {pct(FF_RATIO_TARGET)} thì chỉ cần <strong>{usd(breakEvenRevenue(fixedUsd, FF_RATIO_TARGET))}</strong>
+                {breakEvenRevenue(fixedUsd, FF_RATIO_TARGET) <= total.rev && <> — <strong className="text-good">hết lỗ mà không cần bán thêm đơn nào</strong></>}.
+                Mỗi 1 điểm % FF cắt được đáng khoảng {usd(total.rev / 100)}.
+              </>
+            ) : (
+              <>
+                FF đã dưới ngưỡng {pct(FF_RATIO_TARGET)} —{" "}
+                {breakEvenRevenue(fixedUsd, ffRatio) > total.rev
+                  ? <>khoảng cách tới hoà vốn là <strong>doanh thu</strong> (thiếu {usd(breakEvenRevenue(fixedUsd, ffRatio) - total.rev)}), không phải giá vốn.</>
+                  : <>đã vượt điểm hoà vốn.</>}
+              </>
+            )}
           </p>
         </section>
       )}

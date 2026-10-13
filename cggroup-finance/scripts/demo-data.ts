@@ -16,6 +16,10 @@ import { postCashTxn } from "../src/lib/ledger";
 import { createBill, payBill } from "../src/lib/payables";
 import { approvePeriod, calculatePeriod, createPeriod, payPeriod, setAdjustment } from "../src/lib/payroll-service";
 import { toJsonSafe } from "../src/lib/db";
+import type { NormalizedOrder } from "../src/lib/order-import";
+import { addFulfillment, importOrders, recomputeOrderCosts } from "../src/lib/orders";
+import { createPayout, postPayout } from "../src/lib/payouts";
+import { addFiling, addSupplierPrice, changeShopStatus } from "../src/lib/shops";
 
 const url = process.env.DATABASE_URL ?? "";
 if (!/demo|test/i.test(url)) {
@@ -39,6 +43,7 @@ async function main() {
     data: { code: "PO-SALES01", name: "Payoneer sales", providerId: "prov_payoneer", email: "sales01@cggroup.vn", kind: "EWALLET", currency: "USD", glAccount: "107" },
   });
 
+  const entity = await db.legalEntity.create({ data: { code: "LLC-WY", name: "CG Commerce LLC", kind: "LLC", country: "US", renewalDate: addDays(today, 40) } });
   for (let i = 0; i <= 95; i += 3) {
     await db.fxRate.create({ data: { date: addDays(d0, i), base: "USD", quote: "VND", rate: String(25_250 + (i % 9) * 15) } });
   }
@@ -49,7 +54,7 @@ async function main() {
       ["ET-01", "Etsy Wedding", "ETSY"],
       ["WM-01", "Walmart 01", "WALMART"],
       ["TT-01", "TikTok 01", "TIKTOK"],
-    ].map(([code, name, channel]) => db.shop.create({ data: { code, name, channel } })),
+    ].map(([code, name, channel], k) => db.shop.create({ data: { code, name, channel, entityId: entity.id, payoutAccountId: k % 2 ? po.id : awhk } })),
   );
   const cat = async (code: string) => (await db.expenseCategory.findUniqueOrThrow({ where: { code } })).id;
   await db.expenseCategory.update({ where: { code: "THUE_VP" }, data: { dueDay: 5, budgetVnd: 25_000_000n } });
@@ -123,6 +128,78 @@ async function main() {
   await db.$transaction((tx) => calculatePeriod(tx, period.id, A));
   await db.$transaction((tx) => approvePeriod(tx, period.id, "gd"));
   await db.$transaction((tx) => payPeriod(tx, { periodId: period.id, accountId: bank, date: addDays(today, -8), actorId: A }));
+
+  // ------------------------------------------------------------------ GĐ3
+  const designs = [["D-WED", "Wedding vows", "wedding"], ["D-BDAY", "Birthday 30", "birthday"], ["D-PHOTO", "Custom photo", "custom photo"]];
+  const skus: { sku: string; design: string; type: string; price: number; cost: number }[] = [
+    { sku: "ORN-WED-01", design: "D-WED", type: "ORNAMENT", price: 24.95, cost: 8.5 },
+    { sku: "TEE-BDAY-M", design: "D-BDAY", type: "TSHIRT", price: 27.5, cost: 11 },
+    { sku: "MUG-PHOTO-11", design: "D-PHOTO", type: "MUG", price: 21.9, cost: 7.2 },
+  ];
+  for (const [code, name, niche] of designs) await db.design.create({ data: { code, name, niche } });
+  for (const s of skus) {
+    const design = await db.design.findUniqueOrThrow({ where: { code: s.design } });
+    const product = await db.product.create({ data: { sku: s.sku, name: s.sku, type: s.type, designId: design.id } });
+    await db.variant.create({ data: { productId: product.id, sku: s.sku } });
+  }
+  const merch = await db.supplier.findUniqueOrThrow({ where: { code: "MERCHIZE" } });
+  const printify = await db.supplier.findUniqueOrThrow({ where: { code: "PRINTIFY" } });
+  await db.$transaction(async (tx) => {
+    for (const s of skus) {
+      await addSupplierPrice(tx, { supplierId: merch.id, sku: s.sku, priceUsd: s.cost, effectiveFrom: addDays(today, -120), actorId: A });
+      await addSupplierPrice(tx, { supplierId: printify.id, sku: s.sku, priceUsd: Math.round(s.cost * 108) / 100, effectiveFrom: addDays(today, -120), actorId: A });
+    }
+  });
+  // ~60 đơn trong 45 ngày qua trên 3 shop; Merchize tính giá cao hơn bảng giá ~12% ở ornament
+  const orderShops = [shops[0], shops[2], shops[3]];
+  for (let k = 0; k < orderShops.length; k++) {
+    const list: NormalizedOrder[] = [];
+    for (let n = 0; n < 20; n++) {
+      const s = skus[(n + k) % skus.length];
+      const qty = 1 + (n % 3 === 0 ? 1 : 0);
+      const gross = Math.round(s.price * qty * 100) / 100;
+      const fee = Math.round(gross * 0.065 * 100) / 100;
+      list.push({
+        externalId: `${orderShops[k].code}-${1000 + n}`,
+        orderedAt: addDays(today, -45 + n * 2 + k).toISOString().slice(0, 10),
+        country: "US",
+        grossUsd: gross, discountUsd: 0, shippingChargedUsd: 0, platformFeeUsd: fee, taxUsd: 0,
+        netUsd: Math.round((gross - fee) * 100) / 100,
+        items: [{ sku: s.sku, qty, amountUsd: gross }],
+        row: n + 2,
+      });
+    }
+    await db.$transaction((tx) => importOrders(tx, { shopId: orderShops[k].id, filename: `demo-${orderShops[k].code}.csv`, orders: list, rowCount: list.length, errorCount: 0, actorId: A }));
+  }
+  const allOrders = await db.order.findMany({ include: { items: true }, orderBy: { orderedAt: "asc" } });
+  await db.$transaction(async (tx) => {
+    for (const [i, o] of allOrders.entries()) {
+      if (i >= allOrders.length - 4) continue; // vài đơn mới nhất chưa ghép fulfill
+      const it = o.items[0];
+      const s = skus.find((x) => x.sku === it.sku)!;
+      const sup = i % 3 === 0 ? printify : merch;
+      const markup = sup.id === merch.id && s.type === "ORNAMENT" ? 1.12 : 1;
+      await addFulfillment(tx, {
+        orderId: o.id, supplierId: sup.id, sku: it.sku, externalId: `FF-${i}`, submittedAt: o.orderedAt,
+        costUsd: Math.round(s.cost * it.qty * markup * 100) / 100, shipUsd: 4.5, trackingNo: null, status: "DELIVERED", actorId: A,
+      });
+    }
+  }, { timeout: 120_000 });
+  for (const m of [...new Set(allOrders.map((o) => `${o.orderedAt.getUTCFullYear()}-${o.orderedAt.getUTCMonth() + 1}`))]) {
+    const [y, mo] = m.split("-").map(Number);
+    await db.$transaction((tx) => recomputeOrderCosts(tx, y, mo), { timeout: 120_000 });
+  }
+  // một payout Etsy cho 10 đơn đầu của ET-01, đã về tài khoản
+  const etOrders = allOrders.filter((o) => o.shopId === shops[2].id).slice(0, 10);
+  const lines = etOrders.map((o) => ({ externalOrderId: o.externalId, amountUsd: Number(o.netUsd), kind: "ORDER" }));
+  lines.push({ externalOrderId: "ET-01-9999", amountUsd: 12.5, kind: "ORDER" }); // đơn lạ
+  const net = Math.round(lines.reduce((a, l) => a + l.amountUsd, 0) * 100) / 100;
+  const pay = await db.$transaction((tx) =>
+    createPayout(tx, { shopId: shops[2].id, periodFrom: addDays(today, -45), periodTo: addDays(today, -25), grossUsd: net, feeUsd: 0, netUsd: net, arrivedAt: addDays(today, -21), lines, actorId: A }),
+  );
+  await db.$transaction((tx) => postPayout(tx, { payoutId: pay.payoutId, actorId: A }));
+  await db.$transaction((tx) => changeShopStatus(tx, { shopId: shops[1].id, toStatus: "SUSPENDED", at: addDays(today, -6), note: "Amazon: policy warning, đang kháng nghị", actorId: A }));
+  await db.$transaction((tx) => addFiling(tx, { entityId: entity.id, kind: "RENEWAL", dueDate: addDays(today, 18), amountVnd: 12_000_000n, actorId: A }));
 
   const start = startOfWeek(today);
   const { input } = await db.$transaction((tx) => loadForecastInput(tx, { startDate: start }));
