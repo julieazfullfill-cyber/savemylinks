@@ -44,3 +44,6 @@ next-env.d.ts
 # chứng từ đính kèm (lưu cục bộ) và bản sao lưu DB
 /uploads
 /backups
+
+# dữ liệu thật (tên, lương, số tài khoản) — không đưa lên git
+/seed-data/
