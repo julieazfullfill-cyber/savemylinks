@@ -1102,3 +1102,27 @@ model ReportSnapshot {
 
   @@unique([kind, year, month])
 }
+
+/// Dữ liệu ban đầu chờ chốt (màn 30): một dòng CSV seed-data/ (pháp nhân, tài khoản, nhân viên, shop,
+/// hợp đồng). Sửa trên web → "Chốt" ghi vào bảng thật rồi KHOÁ (trigger chặn sửa/xoá dòng đã chốt).
+model ImportRow {
+  id        String    @id @default(cuid())
+  /// ENTITY | ACCOUNT | EMPLOYEE | SHOP | CONTRACT
+  kind      String
+  /// mã nhận diện: code, hoặc mã nhân viên với hợp đồng
+  key       String
+  data      Json
+  /// ghi chú / gợi ý từ file gốc (ghi_chu, cột tham khảo) — chỉ để đọc
+  note      String?
+  /// DRAFT | LOCKED
+  status    String    @default("DRAFT")
+  /// id bản ghi thật sau khi chốt
+  targetId  String?
+  updatedBy String?
+  updatedAt DateTime  @updatedAt
+  lockedBy  String?
+  lockedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([kind, key])
+}
