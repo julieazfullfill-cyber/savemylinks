@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
+import { cashAccountUsage } from "@/lib/cash-accounts";
 import { CATALOGS, catalogByKey, type Catalog, type Field, type RefSource } from "@/lib/catalog";
 import { bizDateStr, fmtBizDate } from "@/lib/dates";
 import { prisma } from "@/lib/db";
@@ -71,8 +72,8 @@ function formValue(f: Field, row: Row | null): string {
   return String(v);
 }
 
-function Input({ f, row, refs }: { f: Field; row: Row | null; refs: RefOptions }) {
-  const locked = f.immutable && row !== null;
+function Input({ f, row, refs, used }: { f: Field; row: Row | null; refs: RefOptions; used: boolean }) {
+  const locked = row !== null && (f.immutable || (f.lockWhenUsed && used));
   const common = { id: f.name, name: f.name, disabled: locked, required: f.required && !locked && f.type !== "password" };
   if (f.type === "bool") {
     const checked = row ? Boolean(row[f.name]) : f.default === true;
@@ -115,7 +116,7 @@ function Input({ f, row, refs }: { f: Field; row: Row | null; refs: RefOptions }
         {f.required && !locked && <span className="text-crit"> *</span>}
       </label>
       {control}
-      {f.help && <p className="mt-1 text-xs text-muted">{f.help}</p>}
+      {locked && f.lockWhenUsed ? <p className="mt-1 text-xs text-muted">Đã có giao dịch / số dư chốt / payout — không đổi được</p> : f.help && <p className="mt-1 text-xs text-muted">{f.help}</p>}
     </div>
   );
 }
@@ -138,6 +139,8 @@ export default async function CatalogPage({
   const showForm = edit === "new" || editing !== undefined;
   const listFields = cat.fields.filter((f) => !f.hideInList);
   const save = saveCatalogItem.bind(null, cat.key, editing ? String(editing[cat.idField]) : null);
+  // Trường lockWhenUsed (loại tiền của tài khoản tiền) chỉ khoá khi bản ghi đã được dùng.
+  const used = editing && cat.model === "cashAccount" ? (await cashAccountUsage(prisma, String(editing[cat.idField]))) > 0 : false;
 
   return (
     <div className="max-w-6xl">
@@ -166,7 +169,7 @@ export default async function CatalogPage({
           {error && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-crit">{error}</p>}
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {cat.fields.map((f) => (
-              <Input key={f.name} f={f} row={editing ?? null} refs={refs} />
+              <Input key={f.name} f={f} row={editing ?? null} refs={refs} used={used} />
             ))}
           </div>
           <div className="mt-5 flex gap-2">

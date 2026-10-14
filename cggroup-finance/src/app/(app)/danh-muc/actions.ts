@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { audit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { applyProviderDefaults } from "@/lib/cash-accounts";
+import { applyProviderDefaults, cashAccountUsage } from "@/lib/cash-accounts";
 import { catalogByKey, parseCatalogForm } from "@/lib/catalog";
 import { prisma, type Tx } from "@/lib/db";
 
@@ -43,6 +43,9 @@ export async function saveCatalogItem(key: string, id: string | null, form: Form
       if (id) {
         const where = { [cat.idField]: id };
         const before = await d.findUniqueOrThrow({ where });
+        if (cat.model === "cashAccount" && data.currency && data.currency !== before.currency && (await cashAccountUsage(tx, id)) > 0) {
+          throw new Error(`Tài khoản đã có giao dịch / số dư chốt / payout bằng ${before.currency} — không đổi sang ${String(data.currency)} được. Tạo tài khoản mới nếu cần.`);
+        }
         const after = await d.update({ where, data });
         await audit(tx, { actorId: me.uid, tableName: cat.table, recordId: id, action: "UPDATE", before: redact(before), after: redact(after) });
       } else {

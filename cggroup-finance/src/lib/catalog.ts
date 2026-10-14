@@ -12,6 +12,8 @@ export type Field = {
   required?: boolean;
   /** Không sửa được sau khi tạo (mã tài khoản, loại tiền…). */
   immutable?: boolean;
+  /** Sửa được cho tới khi bản ghi đã được dùng (VD loại tiền của tài khoản đã có giao dịch). */
+  lockWhenUsed?: boolean;
   options?: readonly string[];
   /** Nhãn hiển thị cho từng option (mặc định là chính mã). */
   optionLabels?: Record<string, string>;
@@ -79,7 +81,7 @@ export const CATALOGS: Catalog[] = [
       { name: "email", label: "Email tài khoản", type: "email", help: "Email đăng nhập ví — không trùng trong cùng nhóm" },
       { ...code, help: "Mã ngắn, ví dụ PO-SALES01" },
       name,
-      { name: "currency", label: "Tiền tệ", type: "select", required: true, immutable: true, options: ["VND", "USD"] },
+      { name: "currency", label: "Tiền tệ", type: "select", required: true, lockWhenUsed: true, options: ["VND", "USD"], help: "Đổi được khi tài khoản chưa có giao dịch / số dư chốt / payout" },
       { name: "glAccount", label: "TK kế toán", type: "ref", ref: "assetAccount", help: "Trống = theo nhóm" },
       { name: "entityId", label: "Pháp nhân", type: "ref", ref: "entity" },
       active,
