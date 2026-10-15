@@ -1103,6 +1103,66 @@ model ReportSnapshot {
   @@unique([kind, year, month])
 }
 
+/// Thu chi lịch sử chờ chốt (màn 31): một dòng của file "Tháng N Doanh thu chi phí team X.xlsx".
+/// Gắn shop / tài khoản / hạng mục trên web → "Chốt tháng" ghi thành CashTxn rồi KHOÁ (trigger staged_txn_locked).
+model StagedTxn {
+  id         String    @id @default(cuid())
+  /// "T1-2026-08": team + tháng — một lần chốt
+  source     String
+  team       String
+  year       Int
+  month      Int
+  /// AMZ | ETSY | OTHER_IN | FIXED | OPEX | CHUNG | FULFILL
+  section    String
+  line       Int
+  /// nội dung gốc trong file
+  label      String
+  /// số TK nhận / ô gốc (sheet!dòng)
+  ref        String?
+  date       DateTime  @db.Date
+  direction  Direction
+  /// nguyên tệ, đơn vị nhỏ nhất (USD = cent)
+  amount     BigInt
+  currency   Currency
+  /// VND / 1 USD dùng khi tài khoản khác loại tiền
+  fxRate     Decimal   @db.Decimal(18, 6)
+  shopId     String?
+  accountId  String?
+  categoryId String?
+  supplierId String?
+  /// thu không gắn shop: TK ghi Có (402 doanh thu Amazon, 409 thu khác, 501 NCC hoàn…)
+  incomeGl   String?
+  /// DRAFT | SKIP | LOCKED
+  status     String    @default("DRAFT")
+  note       String?
+  cashTxnId  String?   @unique
+  updatedBy  String?
+  updatedAt  DateTime  @updatedAt
+  lockedBy   String?
+  lockedAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([source, line])
+  @@index([year, month, team])
+}
+
+/// Tổng ghi trong file (để đối chiếu với tổng các dòng ở màn 31).
+model StagedSource {
+  /// "T1-2026-08"
+  source   String   @id
+  team     String
+  year     Int
+  month    Int
+  file     String
+  /// tỷ giá tháng suy từ file (chi cố định VND / USD)
+  fxRate   Decimal? @db.Decimal(18, 6)
+  /// tổng ghi trong file, USD: THU, THU_AMZ, THU_ETSY, THU_KHAC, CHI, CHI_CO_DINH, CHI_LUONG_SAN_CHUNG, CHI_FULFILL, LOI_NHUAN
+  totals   Json
+  /// cảnh báo khi đọc file (chi tiết không khớp dòng tổng…)
+  warnings String[]
+  stagedAt DateTime @default(now())
+}
+
 /// Dữ liệu ban đầu chờ chốt (màn 30): một dòng CSV seed-data/ (pháp nhân, tài khoản, nhân viên, shop,
 /// hợp đồng). Sửa trên web → "Chốt" ghi vào bảng thật rồi KHOÁ (trigger chặn sửa/xoá dòng đã chốt).
 model ImportRow {

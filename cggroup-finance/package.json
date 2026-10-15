@@ -17,7 +17,8 @@
     "phase3:selftest": "tsx scripts/phase3-selftest.ts",
     "phase4:selftest": "tsx scripts/phase4-selftest.ts",
     "alerts:daily": "tsx scripts/daily-alerts.ts",
-    "import:seed": "tsx scripts/import-seed-data.ts"
+    "import:seed": "tsx scripts/import-seed-data.ts",
+    "import:report": "tsx scripts/import-monthly-report.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
