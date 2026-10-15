@@ -36,7 +36,7 @@ export default async function ReportReconcilePage({ searchParams }: { searchPara
 
   const [rows, accounts, shops, cats, sups, glAccounts] = await Promise.all([
     prisma.stagedTxn.findMany({ where: { source: src.source }, orderBy: { line: "asc" } }),
-    prisma.cashAccount.findMany({ where: { active: true }, include: { provider: true }, orderBy: [{ provider: { name: "asc" } }, { code: "asc" }] }),
+    prisma.cashAccount.findMany({ include: { provider: true }, orderBy: [{ provider: { name: "asc" } }, { code: "asc" }] }),
     prisma.shop.findMany({ orderBy: { code: "asc" } }),
     prisma.expenseCategory.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
@@ -143,7 +143,7 @@ export default async function ReportReconcilePage({ searchParams }: { searchPara
               <label className="label" htmlFor="bulkAccount">Gán tài khoản cho dòng còn trống</label>
               <select className="input" id="bulkAccount" name="bulkAccount" defaultValue="">
                 <option value="">—</option>
-                {accounts.map((a) => <option key={a.id} value={a.id}>{a.provider.name} · {a.code} ({a.currency})</option>)}
+                {accounts.map((a) => <option key={a.id} value={a.id} disabled={!a.active}>{a.provider.name} · {a.code} ({a.currency}){a.active ? "" : " — ngưng dùng, bật ở màn 8"}</option>)}
               </select>
             </div>
             <div>
@@ -174,10 +174,10 @@ export default async function ReportReconcilePage({ searchParams }: { searchPara
                   const lockedRow = r.status === "LOCKED" || !canWrite;
                   const errs = r.status === "DRAFT" ? rowErrors(r) : [];
                   const n = (k: string) => `${r.id}.${k}`;
-                  const sel = (k: string, value: string | null, opts: { value: string; label: string }[], label: string, warn: boolean) => (
+                  const sel = (k: string, value: string | null, opts: { value: string; label: string; disabled?: boolean }[], label: string, warn: boolean) => (
                     <select className={`input min-w-44 ${warn ? "border-crit bg-red-50" : ""}`} name={n(k)} defaultValue={value ?? ""} disabled={lockedRow} aria-label={label}>
                       <option value="">— {label}</option>
-                      {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {opts.map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
                     </select>
                   );
                   return (
@@ -197,7 +197,7 @@ export default async function ReportReconcilePage({ searchParams }: { searchPara
                         </div>
                         {r.currency === "VND" && rate > 0 && <div className="text-[11px] text-muted">≈ {usd(Number(r.amount) / rate)} $</div>}
                       </td>
-                      <td>{sel("account", r.accountId, accounts.map((a) => ({ value: a.id, label: `${a.code} (${a.currency})` })), "Tài khoản", r.status === "DRAFT" && !r.accountId)}</td>
+                      <td>{sel("account", r.accountId, accounts.map((a) => ({ value: a.id, label: `${a.provider.name} · ${a.code} (${a.currency})${a.active ? "" : " — ngưng dùng"}`, disabled: !a.active })), "Tài khoản", r.status === "DRAFT" && !r.accountId)}</td>
                       <td>
                         {r.direction === "IN" ? (
                           <div className="flex flex-col gap-1">
